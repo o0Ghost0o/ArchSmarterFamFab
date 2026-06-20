@@ -288,7 +288,7 @@ namespace ArchSmarterFamFab.Data
                         }
                         else if (geomType == "blend")
                         {
-                            created = CreateBlend(doc, geom, sketchRefPlane, planeDirection,
+                            created = CreateBlend(doc, app, geom, sketchRefPlane, planeDirection,
                                 root, paramDefaults, sourceUnitType, subcategoryMap, out error);
                         }
 
@@ -703,7 +703,8 @@ namespace ArchSmarterFamFab.Data
         }
 
         private static bool CreateBlend(
-            Document doc, JsonElement geom, ReferencePlane sketchRefPlane,
+            Document doc, Autodesk.Revit.ApplicationServices.Application app,
+            JsonElement geom, ReferencePlane sketchRefPlane,
             string planeDirection, JsonElement root,
             Dictionary<string, double> paramDefaults, ForgeTypeId sourceUnitType,
             Dictionary<string, Category> subcategoryMap, out string error)
@@ -712,6 +713,30 @@ namespace ArchSmarterFamFab.Data
             string geomName = geom.GetProperty("name").GetString();
             bool isVoid = geom.GetProperty("is_void").GetBoolean();
             string sketchPlaneName = geom.GetProperty("sketch_plane").GetString();
+
+            var bottomProfile = geom.GetProperty("bottom_profile");
+            var topProfile = geom.GetProperty("top_profile");
+            string bottomShape = bottomProfile.GetProperty("shape").GetString();
+            string topShape = topProfile.GetProperty("shape").GetString();
+
+            string bottomOffsetExpr = GetExpressionString(geom.GetProperty("bottom_offset"));
+            string topOffsetExpr = GetExpressionString(geom.GetProperty("top_offset"));
+            double bottomOffsetValue = EvaluateExpression(bottomOffsetExpr, paramDefaults);
+            double topOffsetValue = EvaluateExpression(topOffsetExpr, paramDefaults);
+
+            if (bottomShape == "circle" && topShape == "circle")
+            {
+                double bottomRadius = EvaluateExpression(
+                    GetExpressionString(bottomProfile.GetProperty("radius")), paramDefaults);
+                double topRadius = EvaluateExpression(
+                    GetExpressionString(topProfile.GetProperty("radius")), paramDefaults);
+
+                if (Math.Abs(bottomRadius - topRadius) < 0.001)
+                {
+                    return CreateBlendAsSweep(doc, geom, sketchRefPlane, planeDirection,
+                        root, paramDefaults, sourceUnitType, subcategoryMap, out error);
+                }
+            }
 
             SketchPlane sketchPlane;
             try
@@ -737,8 +762,6 @@ namespace ArchSmarterFamFab.Data
 
             try
             {
-                var bottomProfile = geom.GetProperty("bottom_profile");
-                string bottomShape = bottomProfile.GetProperty("shape").GetString();
                 switch (bottomShape)
                 {
                     case "rectangle":
@@ -755,8 +778,6 @@ namespace ArchSmarterFamFab.Data
                         return false;
                 }
 
-                var topProfile = geom.GetProperty("top_profile");
-                string topShape = topProfile.GetProperty("shape").GetString();
                 switch (topShape)
                 {
                     case "rectangle":
@@ -785,10 +806,6 @@ namespace ArchSmarterFamFab.Data
                 return false;
             }
 
-            string bottomOffsetExpr = GetExpressionString(geom.GetProperty("bottom_offset"));
-            string topOffsetExpr = GetExpressionString(geom.GetProperty("top_offset"));
-            double bottomOffsetValue = EvaluateExpression(bottomOffsetExpr, paramDefaults);
-            double topOffsetValue = EvaluateExpression(topOffsetExpr, paramDefaults);
             double bottomOffsetFeet = UnitUtils.ConvertToInternalUnits(bottomOffsetValue, sourceUnitType);
             double topOffsetFeet = UnitUtils.ConvertToInternalUnits(topOffsetValue, sourceUnitType);
 
@@ -838,6 +855,110 @@ namespace ArchSmarterFamFab.Data
             }
 
             return true;
+        }
+
+        private static bool CreateBlendAsSweep(
+            Document doc, JsonElement geom, ReferencePlane sketchRefPlane,
+            string planeDirection, JsonElement root,
+            Dictionary<string, double> paramDefaults, ForgeTypeId sourceUnitType,
+            Dictionary<string, Category> subcategoryMap, out string error)
+        {
+            error = null;
+            bool isVoid = geom.GetProperty("is_void").GetBoolean();
+            string sketchPlaneName = geom.GetProperty("sketch_plane").GetString();
+            double planeOffsetFeet = GetPlaneOffsetFeet(sketchPlaneName, root, paramDefaults, sourceUnitType);
+
+            var bottomProfile = geom.GetProperty("bottom_profile");
+            var topProfile = geom.GetProperty("top_profile");
+
+            var bottomCenter = bottomProfile.GetProperty("center");
+            double bcu = EvaluateExpression(GetExpressionString(bottomCenter.GetProperty("u")), paramDefaults);
+            double bcv = EvaluateExpression(GetExpressionString(bottomCenter.GetProperty("v")), paramDefaults);
+
+            var topCenter = topProfile.GetProperty("center");
+            double tcu = EvaluateExpression(GetExpressionString(topCenter.GetProperty("u")), paramDefaults);
+            double tcv = EvaluateExpression(GetExpressionString(topCenter.GetProperty("v")), paramDefaults);
+
+            double radius = EvaluateExpression(
+                GetExpressionString(bottomProfile.GetProperty("radius")), paramDefaults);
+
+            string bottomOffsetExpr = GetExpressionString(geom.GetProperty("bottom_offset"));
+            string topOffsetExpr = GetExpressionString(geom.GetProperty("top_offset"));
+            double bottomOffsetValue = EvaluateExpression(bottomOffsetExpr, paramDefaults);
+            double topOffsetValue = EvaluateExpression(topOffsetExpr, paramDefaults);
+            double bottomOffsetFeet = UnitUtils.ConvertToInternalUnits(bottomOffsetValue, sourceUnitType);
+            double topOffsetFeet = UnitUtils.ConvertToInternalUnits(topOffsetValue, sourceUnitType);
+
+            XYZ bottomPoint = UVToXYZ(bcu, bcv, planeDirection, sourceUnitType, planeOffsetFeet + bottomOffsetFeet);
+            XYZ topPoint = UVToXYZ(tcu, tcv, planeDirection, sourceUnitType, planeOffsetFeet + topOffsetFeet);
+
+            double cableLength = bottomPoint.DistanceTo(topPoint);
+            if (cableLength < 0.01)
+            {
+                error = "Cable too short (bottom and top points nearly coincide).";
+                return false;
+            }
+
+            XYZ cableDir = (topPoint - bottomPoint).Normalize();
+
+            Plane extPlane = Plane.CreateByNormalAndOrigin(cableDir, bottomPoint);
+            SketchPlane extSketchPlane;
+            try
+            {
+                extSketchPlane = SketchPlane.Create(doc, extPlane);
+            }
+            catch (Exception ex)
+            {
+                error = $"SketchPlane for extrusion failed: {ex.Message}";
+                return false;
+            }
+
+            double radiusFeet = UnitUtils.ConvertToInternalUnits(radius, sourceUnitType);
+            XYZ basisU = extPlane.XVec;
+            XYZ basisV = extPlane.YVec;
+
+            CurveArrArray profileLoops = new CurveArrArray();
+            CurveArray profileCurves = new CurveArray();
+
+            try
+            {
+                XYZ circleTop = bottomPoint.Add(basisV.Multiply(radiusFeet));
+                XYZ circleBottom = bottomPoint.Add(basisV.Multiply(-radiusFeet));
+                XYZ circleRight = bottomPoint.Add(basisU.Multiply(radiusFeet));
+                XYZ circleLeft = bottomPoint.Add(basisU.Multiply(-radiusFeet));
+
+                profileCurves.Append(Arc.Create(circleTop, circleBottom, circleRight));
+                profileCurves.Append(Arc.Create(circleBottom, circleTop, circleLeft));
+            }
+            catch (Exception ex)
+            {
+                error = $"Circle profile failed: {ex.Message}";
+                return false;
+            }
+
+            profileLoops.Append(profileCurves);
+
+            try
+            {
+                Extrusion extrusion = doc.FamilyCreate.NewExtrusion(
+                    !isVoid, profileLoops, extSketchPlane, cableLength);
+
+                if (geom.TryGetProperty("subcategory", out var subcatProp))
+                {
+                    string subcatName = subcatProp.GetString();
+                    if (subcategoryMap.ContainsKey(subcatName))
+                        extrusion.Subcategory = subcategoryMap[subcatName];
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = $"Extrusion failed ({ex.GetType().Name}): {ex.Message}";
+                if (ex.InnerException != null)
+                    error += $" | Inner: {ex.InnerException.Message}";
+                return false;
+            }
         }
 
         // ==================== EXPRESSION HANDLING ====================
