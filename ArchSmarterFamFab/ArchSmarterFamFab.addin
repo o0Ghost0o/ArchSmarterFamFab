@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>ArchSmarterFamFab</Name>
+    <Assembly>ArchSmarterFamFab\ArchSmarterFamFab.dll</Assembly>
+    <FullClassName>ArchSmarterFamFab.App</FullClassName>
+    <ClientId>cd1f7fc1-187f-44cb-b7a1-49775c392326</ClientId>
+    <VendorId>ArchSmarter</VendorId>
+    <VendorDescription>ArchSmarter, https://archsmarter.com</VendorDescription>
+  </AddIn>
+</RevitAddIns>
