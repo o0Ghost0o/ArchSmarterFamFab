@@ -1,4 +1,4 @@
-# FamFab — AI-Powered Revit Family Generator
+# Family Fabricator (Fam|Fab) — AI-Powered Revit Family Generator
 
 FamFab is an open-source Revit add-in that generates parametric families from images. Snap a photo of a piece of furniture, a light fixture, or any building component, and FamFab uses the Claude API to create a fully parametric Revit family — complete with 3D geometry, parameters, and subcategories.
 
