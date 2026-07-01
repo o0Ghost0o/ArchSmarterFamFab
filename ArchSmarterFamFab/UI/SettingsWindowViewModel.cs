@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using ArchSmarterFamFab.Data;
 
@@ -9,15 +10,53 @@ namespace ArchSmarterFamFab.UI
     {
         private readonly FamFabSettingsManager _settingsManager;
 
+        /// <summary>Raised when the visible API key changes because the provider switched,
+        /// so the view can resync the (unbound) PasswordBox.</summary>
+        public event Action ApiKeyRefreshed;
+
         public SettingsWindowViewModel()
         {
             _settingsManager = new FamFabSettingsManager();
 
-            _apiKey = _settingsManager.GetClaudeApiKey();
-            _selectedModel = _settingsManager.GetModelName();
-            AvailableModels = new ObservableCollection<string>(_settingsManager.GetAvailableModels());
+            ProviderOptions = new ObservableCollection<string>(
+                LlmProviders.All.Select(LlmProviders.DisplayName));
 
+            _selectedProviderDisplay = LlmProviders.DisplayName(_settingsManager.GetProvider());
+            _apiKey = _settingsManager.GetApiKey();
+            AvailableModels = new ObservableCollection<string>(_settingsManager.GetAvailableModels());
+            _selectedModel = _settingsManager.GetModelName();
+
+            UpdateKeyLabel();
             UpdateStatus();
+        }
+
+        public ObservableCollection<string> ProviderOptions { get; }
+
+        private string _selectedProviderDisplay;
+        public string SelectedProviderDisplay
+        {
+            get => _selectedProviderDisplay;
+            set
+            {
+                if (_selectedProviderDisplay == value || string.IsNullOrEmpty(value)) return;
+                _selectedProviderDisplay = value;
+                _settingsManager.SetProvider(LlmProviders.FromDisplay(value));
+                OnPropertyChanged();
+
+                // Refresh everything that depends on the active provider.
+                _apiKey = _settingsManager.GetApiKey();
+                OnPropertyChanged(nameof(ApiKey));
+
+                AvailableModels.Clear();
+                foreach (string model in _settingsManager.GetAvailableModels())
+                    AvailableModels.Add(model);
+                _selectedModel = _settingsManager.GetModelName();
+                OnPropertyChanged(nameof(SelectedModel));
+
+                UpdateKeyLabel();
+                UpdateStatus();
+                ApiKeyRefreshed?.Invoke();
+            }
         }
 
         private string _apiKey;
@@ -27,7 +66,7 @@ namespace ArchSmarterFamFab.UI
             set
             {
                 _apiKey = value;
-                _settingsManager.SetClaudeApiKey(value);
+                _settingsManager.SetApiKey(value);
                 UpdateStatus();
                 OnPropertyChanged();
             }
@@ -40,12 +79,20 @@ namespace ArchSmarterFamFab.UI
             set
             {
                 _selectedModel = value;
-                _settingsManager.SetModelName(value);
+                if (!string.IsNullOrEmpty(value))
+                    _settingsManager.SetModelName(value);
                 OnPropertyChanged();
             }
         }
 
         public ObservableCollection<string> AvailableModels { get; }
+
+        private string _keyLabel;
+        public string KeyLabel
+        {
+            get => _keyLabel;
+            set { _keyLabel = value; OnPropertyChanged(); }
+        }
 
         private string _statusText;
         public string StatusText
@@ -54,14 +101,18 @@ namespace ArchSmarterFamFab.UI
             set { _statusText = value; OnPropertyChanged(); }
         }
 
+        private void UpdateKeyLabel()
+        {
+            KeyLabel = LlmProviders.KeyLabel(_settingsManager.GetProvider());
+        }
+
         private void UpdateStatus()
         {
+            string provider = _settingsManager.GetProvider();
             if (string.IsNullOrWhiteSpace(_apiKey))
-                StatusText = "Enter your Claude API key to get started.";
-            else if (_apiKey.StartsWith("sk-ant-"))
-                StatusText = "API key configured.";
+                StatusText = $"Enter your {LlmProviders.DisplayName(provider)} API key to get started.";
             else
-                StatusText = "API key set (verify it starts with sk-ant-).";
+                StatusText = "API key configured. " + LlmProviders.KeyHint(provider);
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

@@ -21,11 +21,12 @@ namespace ArchSmarterFamFab
             }
 
             var settingsManager = new FamFabSettingsManager();
-            string apiKey = settingsManager.GetClaudeApiKey();
+            string apiKey = settingsManager.GetApiKey();
             if (string.IsNullOrWhiteSpace(apiKey))
             {
+                string providerName = Data.LlmProviders.DisplayName(settingsManager.GetProvider());
                 TaskDialog.Show("FamFab",
-                    "Please configure your Claude API key first.\n\nClick the FamFab Settings button to enter your key.");
+                    $"Please configure your {providerName} API key first.\n\nClick the FamFab Settings button to enter your key.");
                 return Result.Failed;
             }
 
@@ -40,7 +41,7 @@ namespace ArchSmarterFamFab
             SaveJson(familyJson, "api-response", familyName);
             string sourceImagePath = SaveSourceImage(generateWindow.SourceImageBytes, generateWindow.SourceImageMimeType, familyName);
 
-            var previewWindow = new PreviewWindow(familyJson, apiKey, settingsManager.GetModelName(),
+            var previewWindow = new PreviewWindow(familyJson, settingsManager.GetProvider(), apiKey, settingsManager.GetModelName(),
                 generateWindow.SourceImageBytes, generateWindow.SourceImageMimeType, sourceImagePath, familyName);
             new WindowInteropHelper(previewWindow).Owner = uiapp.MainWindowHandle;
 

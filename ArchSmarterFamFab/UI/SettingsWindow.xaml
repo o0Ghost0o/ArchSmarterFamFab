@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="FamFab Settings"
         Width="480"
-        Height="300"
+        Height="380"
         MinWidth="360"
-        MinHeight="240"
+        MinHeight="320"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -81,13 +81,22 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="16"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="16"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- API Key -->
+                <!-- Provider -->
                 <StackPanel Grid.Row="0">
-                    <TextBlock Text="Claude API Key" Margin="0,0,0,6" FontWeight="SemiBold"/>
+                    <TextBlock Text="Provider" Margin="0,0,0,6" FontWeight="SemiBold"/>
+                    <ComboBox ItemsSource="{Binding ProviderOptions}"
+                              SelectedItem="{Binding SelectedProviderDisplay, Mode=TwoWay}"/>
+                </StackPanel>
+
+                <!-- API Key -->
+                <StackPanel Grid.Row="2">
+                    <TextBlock Text="{Binding KeyLabel}" Margin="0,0,0,6" FontWeight="SemiBold"/>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -106,20 +115,21 @@
                 </StackPanel>
 
                 <!-- Model -->
-                <StackPanel Grid.Row="2">
+                <StackPanel Grid.Row="4">
                     <TextBlock Text="Model" Margin="0,0,0,6" FontWeight="SemiBold"/>
                     <ComboBox ItemsSource="{Binding AvailableModels}"
                               SelectedItem="{Binding SelectedModel}"/>
                 </StackPanel>
 
                 <!-- Status -->
-                <StackPanel Grid.Row="4">
+                <StackPanel Grid.Row="6">
                     <TextBlock Text="{Binding StatusText}"
-                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"/>
+                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
+                               TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <!-- Close button -->
-                <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
+                <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Content="Close"
                             Style="{StaticResource PrimaryButton}"
                             Click="BtnClose_Click"/>

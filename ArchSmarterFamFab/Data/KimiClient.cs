@@ -1,21 +1,22 @@
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace ArchSmarterFamFab.Data
 {
     /// <summary>
-    /// Anthropic Claude client (Messages API). Sends the image as base64 plus a system
-    /// prompt built from the embedded skill + schema.
+    /// Moonshot Kimi client. Moonshot exposes an OpenAI-compatible Chat Completions API,
+    /// so the image is sent as a base64 data URL inside a multi-part user message.
     /// </summary>
-    public class ClaudeClient : IFamilyModelClient
+    public class KimiClient : IFamilyModelClient
     {
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(300) };
-        private const string Endpoint = "https://api.anthropic.com/v1/messages";
+        private const string Endpoint = "https://api.moonshot.ai/v1/chat/completions";
         private readonly string _apiKey;
         private readonly string _modelName;
 
-        public ClaudeClient(string apiKey, string modelName)
+        public KimiClient(string apiKey, string modelName)
         {
             _apiKey = apiKey;
             _modelName = modelName;
@@ -28,13 +29,10 @@ namespace ArchSmarterFamFab.Data
             if (!string.IsNullOrEmpty(userContext))
                 userText += "\n\nAdditional context from the user:\n" + userContext;
 
+            string dataUrl = "data:" + mimeType + ";base64," + Convert.ToBase64String(imageBytes);
             var content = new object[]
             {
-                new
-                {
-                    type = "image",
-                    source = new { type = "base64", media_type = mimeType, data = Convert.ToBase64String(imageBytes) }
-                },
+                new { type = "image_url", image_url = new { url = dataUrl } },
                 new { type = "text", text = userText }
             };
 
@@ -44,38 +42,35 @@ namespace ArchSmarterFamFab.Data
         public Task<string> RefineFamilyAsync(string currentJson, string userInstruction,
             string skillPrompt, string schemaJson, byte[] imageBytes = null, string imageMimeType = null)
         {
-            string textContent = LlmPrompts.RefineUserText(currentJson, userInstruction);
+            string text = LlmPrompts.RefineUserText(currentJson, userInstruction);
 
-            object[] contentParts;
+            object userContent;
             if (imageBytes != null && !string.IsNullOrEmpty(imageMimeType))
             {
-                contentParts = new object[]
+                string dataUrl = "data:" + imageMimeType + ";base64," + Convert.ToBase64String(imageBytes);
+                userContent = new object[]
                 {
-                    new
-                    {
-                        type = "image",
-                        source = new { type = "base64", media_type = imageMimeType, data = Convert.ToBase64String(imageBytes) }
-                    },
-                    new { type = "text", text = textContent }
+                    new { type = "image_url", image_url = new { url = dataUrl } },
+                    new { type = "text", text }
                 };
             }
             else
             {
-                contentParts = new object[] { new { type = "text", text = textContent } };
+                userContent = text;
             }
 
-            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), contentParts);
+            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), userContent);
         }
 
-        private async Task<string> SendAsync(string systemPrompt, object[] userContent)
+        private async Task<string> SendAsync(string systemPrompt, object userContent)
         {
             var requestBody = new
             {
                 model = _modelName,
                 max_tokens = 32768,
-                system = systemPrompt,
                 messages = new object[]
                 {
+                    new { role = "system", content = systemPrompt },
                     new { role = "user", content = userContent }
                 }
             };
@@ -83,8 +78,7 @@ namespace ArchSmarterFamFab.Data
             string jsonPayload = JsonSerializer.Serialize(requestBody);
 
             var request = new HttpRequestMessage(HttpMethod.Post, Endpoint);
-            request.Headers.Add("x-api-key", _apiKey);
-            request.Headers.Add("anthropic-version", "2023-06-01");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
             request.Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
             HttpResponseMessage response = await Http.SendAsync(request);
@@ -93,7 +87,7 @@ namespace ArchSmarterFamFab.Data
             if (!response.IsSuccessStatusCode)
             {
                 throw new LlmException(
-                    $"Claude API returned {(int)response.StatusCode}: {response.ReasonPhrase}",
+                    $"Kimi API returned {(int)response.StatusCode}: {response.ReasonPhrase}",
                     responseJson);
             }
 
@@ -105,27 +99,29 @@ namespace ArchSmarterFamFab.Data
             using JsonDocument doc = JsonDocument.Parse(responseJson);
             JsonElement root = doc.RootElement;
 
-            if (root.TryGetProperty("stop_reason", out JsonElement stopReason) &&
-                stopReason.GetString() == "max_tokens")
+            if (!root.TryGetProperty("choices", out JsonElement choices) ||
+                choices.GetArrayLength() == 0)
+            {
+                throw new LlmException("No choices in response", responseJson);
+            }
+
+            JsonElement choice = choices[0];
+
+            if (choice.TryGetProperty("finish_reason", out JsonElement finishReason) &&
+                finishReason.GetString() == "length")
             {
                 throw new LlmException(
                     "Response was truncated — the family definition exceeded the token limit. Try a simpler object or reduce detail level.",
                     responseJson);
             }
 
-            if (!root.TryGetProperty("content", out JsonElement content) || content.GetArrayLength() == 0)
-                throw new LlmException("No content in response", responseJson);
-
-            foreach (JsonElement block in content.EnumerateArray())
+            if (choice.TryGetProperty("message", out JsonElement message) &&
+                message.TryGetProperty("content", out JsonElement contentEl) &&
+                contentEl.ValueKind == JsonValueKind.String)
             {
-                if (block.TryGetProperty("type", out JsonElement typeEl) &&
-                    typeEl.GetString() == "text" &&
-                    block.TryGetProperty("text", out JsonElement textEl))
-                {
-                    string text = textEl.GetString();
-                    if (!string.IsNullOrEmpty(text))
-                        return LlmJson.CleanJsonResponse(text);
-                }
+                string text = contentEl.GetString();
+                if (!string.IsNullOrEmpty(text))
+                    return LlmJson.CleanJsonResponse(text);
             }
 
             throw new LlmException("No text content in response", responseJson);

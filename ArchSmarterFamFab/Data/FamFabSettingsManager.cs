@@ -79,34 +79,80 @@ namespace ArchSmarterFamFab.Data
             return _settings;
         }
 
-        public string GetClaudeApiKey()
+        public string GetProvider()
         {
-            return _settings.ClaudeApiKey ?? "";
+            return LlmProviders.Normalize(_settings.Provider);
         }
 
-        public void SetClaudeApiKey(string apiKey)
+        public void SetProvider(string provider)
         {
-            _settings.ClaudeApiKey = apiKey ?? "";
+            _settings.Provider = LlmProviders.Normalize(provider);
+            SaveSettings();
+        }
+
+        public string GetApiKey()
+        {
+            switch (GetProvider())
+            {
+                case LlmProviders.Google: return _settings.GeminiApiKey ?? "";
+                case LlmProviders.Moonshot: return _settings.MoonshotApiKey ?? "";
+                default: return _settings.ClaudeApiKey ?? "";
+            }
+        }
+
+        public void SetApiKey(string apiKey)
+        {
+            apiKey ??= "";
+            switch (GetProvider())
+            {
+                case LlmProviders.Google: _settings.GeminiApiKey = apiKey; break;
+                case LlmProviders.Moonshot: _settings.MoonshotApiKey = apiKey; break;
+                default: _settings.ClaudeApiKey = apiKey; break;
+            }
             SaveSettings();
         }
 
         public string GetModelName()
         {
-            return _settings.ModelName ?? new FamFabSettings().ModelName;
+            var defaults = new FamFabSettings();
+            switch (GetProvider())
+            {
+                case LlmProviders.Google:
+                    return string.IsNullOrWhiteSpace(_settings.GeminiModel) ? defaults.GeminiModel : _settings.GeminiModel;
+                case LlmProviders.Moonshot:
+                    return string.IsNullOrWhiteSpace(_settings.MoonshotModel) ? defaults.MoonshotModel : _settings.MoonshotModel;
+                default:
+                    return string.IsNullOrWhiteSpace(_settings.ClaudeModel) ? defaults.ClaudeModel : _settings.ClaudeModel;
+            }
         }
 
         public void SetModelName(string modelName)
         {
-            _settings.ModelName = modelName ?? new FamFabSettings().ModelName;
+            if (string.IsNullOrWhiteSpace(modelName)) return;
+            switch (GetProvider())
+            {
+                case LlmProviders.Google: _settings.GeminiModel = modelName; break;
+                case LlmProviders.Moonshot: _settings.MoonshotModel = modelName; break;
+                default: _settings.ClaudeModel = modelName; break;
+            }
             SaveSettings();
         }
 
         public List<string> GetAvailableModels()
         {
-            List<string> models = _settings.AvailableModels;
-            if (models == null || models.Count == 0)
-                return new FamFabSettings().AvailableModels;
-            return models;
+            var defaults = new FamFabSettings();
+            List<string> models;
+            List<string> fallback;
+            switch (GetProvider())
+            {
+                case LlmProviders.Google:
+                    models = _settings.GeminiModels; fallback = defaults.GeminiModels; break;
+                case LlmProviders.Moonshot:
+                    models = _settings.MoonshotModels; fallback = defaults.MoonshotModels; break;
+                default:
+                    models = _settings.ClaudeModels; fallback = defaults.ClaudeModels; break;
+            }
+            return (models == null || models.Count == 0) ? fallback : models;
         }
 
         public static string GetLogsFolderPath()

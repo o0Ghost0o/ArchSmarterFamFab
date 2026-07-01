@@ -22,9 +22,8 @@ namespace ArchSmarterFamFab.UI
             _apiKey = apiKey;
             _settingsManager = settingsManager;
 
-            var settings = settingsManager.GetSettings();
-            CmbModel.ItemsSource = settings.AvailableModels;
-            CmbModel.SelectedItem = settings.ModelName;
+            CmbModel.ItemsSource = settingsManager.GetAvailableModels();
+            CmbModel.SelectedItem = settingsManager.GetModelName();
         }
 
         private void TitleBar_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -65,7 +64,7 @@ namespace ArchSmarterFamFab.UI
                 return;
             }
 
-            string modelName = CmbModel.SelectedItem as string ?? "claude-sonnet-4-20250514";
+            string modelName = CmbModel.SelectedItem as string ?? _settingsManager.GetModelName();
             _settingsManager.SetModelName(modelName);
 
             SetGenerating(true, "Analyzing image...");
@@ -85,11 +84,11 @@ namespace ArchSmarterFamFab.UI
                 string skillPrompt = SkillResources.GetSkillPrompt();
                 string schema = SkillResources.GetFamilySchema();
 
-                SetGenerating(true, $"Sending image to Claude API ({modelName}). This may take a few minutes . . .");
+                SetGenerating(true, $"Sending image to {LlmProviders.DisplayName(_settingsManager.GetProvider())} ({modelName}). This may take a few minutes . . .");
 
                 string userContext = TxtContext.Text?.Trim();
 
-                var client = new ClaudeClient(_apiKey, modelName);
+                var client = LlmClientFactory.Create(_settingsManager.GetProvider(), _apiKey, modelName);
                 string json = await Task.Run(() =>
                     client.GenerateFamilyFromImageAsync(imageBytes, mimeType, skillPrompt, schema, userContext));
 
@@ -113,10 +112,10 @@ namespace ArchSmarterFamFab.UI
                 FamilyName = TxtFamilyName.Text?.Trim();
                 DialogResult = true;
             }
-            catch (ClaudeException ex)
+            catch (LlmException ex)
             {
                 Debug.WriteLine($"Response: {ex.ResponseJson}");
-                System.Windows.MessageBox.Show($"Claude API error: {ex.Message}",
+                System.Windows.MessageBox.Show($"Model API error: {ex.Message}",
                     "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 SetGenerating(false);
             }

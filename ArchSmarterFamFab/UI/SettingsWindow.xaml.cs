@@ -15,6 +15,15 @@ namespace ArchSmarterFamFab.UI
             DataContext = _viewModel;
 
             ApiKeyPasswordBox.Password = _viewModel.ApiKey;
+            _viewModel.ApiKeyRefreshed += OnApiKeyRefreshed;
+        }
+
+        private void OnApiKeyRefreshed()
+        {
+            // Provider changed → the visible key differs. The TextBox is bound, but the
+            // PasswordBox is not, so resync it here.
+            if (!_showingKey)
+                ApiKeyPasswordBox.Password = _viewModel.ApiKey;
         }
 
         private void TitleBar_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)

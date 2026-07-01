@@ -9,6 +9,7 @@ namespace ArchSmarterFamFab.UI
     {
         private string _currentFamilyJson;
         private bool _webViewReady;
+        private readonly string _provider;
         private readonly string _apiKey;
         private readonly string _modelName;
         private readonly byte[] _sourceImageBytes;
@@ -19,12 +20,13 @@ namespace ArchSmarterFamFab.UI
         public bool GenerateRequested { get; private set; }
         public string FamilyName { get; private set; }
 
-        public PreviewWindow(string familyJson, string apiKey, string modelName,
+        public PreviewWindow(string familyJson, string provider, string apiKey, string modelName,
             byte[] sourceImageBytes = null, string sourceImageMimeType = null,
             string sourceImagePath = null, string familyName = null)
         {
             InitializeComponent();
             _currentFamilyJson = familyJson;
+            _provider = provider;
             _apiKey = apiKey;
             _modelName = modelName;
             _sourceImageBytes = sourceImageBytes;
@@ -205,14 +207,14 @@ namespace ArchSmarterFamFab.UI
             if (string.IsNullOrEmpty(instruction))
                 return;
 
-            SetRefining(true, "Sending refinements to Claude API. This may take a few minutes . . .");
+            SetRefining(true, $"Sending refinements to {LlmProviders.DisplayName(_provider)}. This may take a few minutes . . .");
 
             try
             {
                 string skillPrompt = SkillResources.GetSkillPrompt();
                 string schema = SkillResources.GetFamilySchema();
 
-                var client = new ClaudeClient(_apiKey, _modelName);
+                var client = LlmClientFactory.Create(_provider, _apiKey, _modelName);
                 string newJson = await Task.Run(() =>
                     client.RefineFamilyAsync(_currentFamilyJson, instruction, skillPrompt, schema,
                         _sourceImageBytes, _sourceImageMimeType));
@@ -234,10 +236,10 @@ namespace ArchSmarterFamFab.UI
                 TxtPrompt.Clear();
                 StatusText.Text = "Family updated.";
             }
-            catch (ClaudeException ex)
+            catch (LlmException ex)
             {
                 Debug.WriteLine($"Response: {ex.ResponseJson}");
-                System.Windows.MessageBox.Show($"Claude API error: {ex.Message}",
+                System.Windows.MessageBox.Show($"Model API error: {ex.Message}",
                     "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
             }
             catch (JsonException ex)
