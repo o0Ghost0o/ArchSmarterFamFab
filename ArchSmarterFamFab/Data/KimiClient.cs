@@ -9,11 +9,18 @@ namespace ArchSmarterFamFab.Data
     /// <summary>
     /// Moonshot Kimi client. Moonshot exposes an OpenAI-compatible Chat Completions API,
     /// so images are sent as base64 data URLs inside a multi-part user message.
+    ///
+    /// Two key systems are supported automatically:
+    ///   - Open-platform keys ("sk-...")   -> https://api.moonshot.ai/v1
+    ///   - Kimi Code plan keys ("sk-kimi-") -> https://api.kimi.com/coding/v1, which additionally
+    ///     requires a recognized coding-agent User-Agent (else 403 access_terminated_error).
     /// </summary>
     public class KimiClient : IFamilyModelClient
     {
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(300) };
-        private const string Endpoint = "https://api.moonshot.ai/v1/chat/completions";
+        private const string MoonshotEndpoint = "https://api.moonshot.ai/v1/chat/completions";
+        private const string KimiCodingEndpoint = "https://api.kimi.com/coding/v1/chat/completions";
+        private const string CodingUserAgent = "claude-code/0.1.0";
         private readonly string _apiKey;
         private readonly string _modelName;
 
@@ -22,6 +29,8 @@ namespace ArchSmarterFamFab.Data
             _apiKey = apiKey;
             _modelName = modelName;
         }
+
+        private bool IsCodingKey => _apiKey != null && _apiKey.StartsWith("sk-kimi-");
 
         public Task<string> GenerateFamilyFromImagesAsync(IReadOnlyList<ImageInput> images,
             string skillPrompt, string schemaJson, string userContext = null)
@@ -70,8 +79,11 @@ namespace ArchSmarterFamFab.Data
 
             string jsonPayload = JsonSerializer.Serialize(requestBody);
 
-            var request = new HttpRequestMessage(HttpMethod.Post, Endpoint);
+            string endpoint = IsCodingKey ? KimiCodingEndpoint : MoonshotEndpoint;
+            var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+            if (IsCodingKey)
+                request.Headers.TryAddWithoutValidation("User-Agent", CodingUserAgent);
             request.Content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
 
             HttpResponseMessage response = await Http.SendAsync(request);

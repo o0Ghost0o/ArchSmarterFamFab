@@ -36,7 +36,7 @@ namespace ArchSmarterFamFab.Data
         public static string KeyHint(string provider) => Normalize(provider) switch
         {
             Google => "Get a key from Google AI Studio.",
-            Moonshot => "Get a key from platform.moonshot.ai.",
+            Moonshot => "Moonshot key (platform.moonshot.ai) or Kimi Code key (kimi.com) — both auto-detected.",
             _ => "Key usually starts with sk-ant-."
         };
     }

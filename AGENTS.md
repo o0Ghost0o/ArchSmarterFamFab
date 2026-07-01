@@ -149,9 +149,11 @@ Windows + a Revit install are required. There is no CLI test suite and no CI.
     header `x-goog-api-key`, `inline_data` image + `system_instruction`,
     `generationConfig.responseMimeType = application/json`; text at
     `candidates[0].content.parts[].text`.
-  - `KimiClient` → `POST api.moonshot.ai/v1/chat/completions` (OpenAI-compatible),
-    `Authorization: Bearer`, image as a base64 `image_url` data URL; text at
-    `choices[0].message.content`.
+  - `KimiClient` → OpenAI-compatible chat completions with the image(s) as base64
+    `image_url` data URLs; text at `choices[0].message.content`. The endpoint is chosen
+    by key type: open-platform keys (`sk-...`) use `api.moonshot.ai/v1`; Kimi Code plan
+    keys (`sk-kimi-` prefix) use `api.kimi.com/coding/v1` and add a required
+    `User-Agent: claude-code/0.1.0` header (model `kimi-for-coding`, alias `kimi-k2.7-code`).
 - **`FamilyGenerator.Execute`** is the core executor. It parses JSON with
   `System.Text.Json`, requires `metadata.schema_version == "0.1"`, maps `units` to
   a `ForgeTypeId`, clears prior content in one transaction (preserving built-in

@@ -35,6 +35,7 @@ namespace ArchSmarterFamFab.Data
 
         public List<string> MoonshotModels { get; set; } = new List<string>
         {
+            "kimi-for-coding",
             "kimi-k2.7-code",
             "kimi-k2.6",
             "kimi-latest",
