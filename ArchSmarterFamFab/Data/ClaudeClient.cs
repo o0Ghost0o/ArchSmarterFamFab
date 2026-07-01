@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -5,8 +6,8 @@ using System.Threading.Tasks;
 namespace ArchSmarterFamFab.Data
 {
     /// <summary>
-    /// Anthropic Claude client (Messages API). Sends the image as base64 plus a system
-    /// prompt built from the embedded skill + schema.
+    /// Anthropic Claude client (Messages API). Sends one or more images as base64 plus a
+    /// system prompt built from the embedded skill + schema.
     /// </summary>
     public class ClaudeClient : IFamilyModelClient
     {
@@ -21,50 +22,39 @@ namespace ArchSmarterFamFab.Data
             _modelName = modelName;
         }
 
-        public Task<string> GenerateFamilyFromImageAsync(byte[] imageBytes, string mimeType,
+        public Task<string> GenerateFamilyFromImagesAsync(IReadOnlyList<ImageInput> images,
             string skillPrompt, string schemaJson, string userContext = null)
         {
             string userText = LlmPrompts.GenerateUserText;
             if (!string.IsNullOrEmpty(userContext))
                 userText += "\n\nAdditional context from the user:\n" + userContext;
 
-            var content = new object[]
-            {
-                new
-                {
-                    type = "image",
-                    source = new { type = "base64", media_type = mimeType, data = Convert.ToBase64String(imageBytes) }
-                },
-                new { type = "text", text = userText }
-            };
-
-            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), content);
+            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), BuildContent(images, userText));
         }
 
         public Task<string> RefineFamilyAsync(string currentJson, string userInstruction,
-            string skillPrompt, string schemaJson, byte[] imageBytes = null, string imageMimeType = null)
+            string skillPrompt, string schemaJson, IReadOnlyList<ImageInput> images = null)
         {
             string textContent = LlmPrompts.RefineUserText(currentJson, userInstruction);
+            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), BuildContent(images, textContent));
+        }
 
-            object[] contentParts;
-            if (imageBytes != null && !string.IsNullOrEmpty(imageMimeType))
+        private static object[] BuildContent(IReadOnlyList<ImageInput> images, string text)
+        {
+            var content = new List<object>();
+            if (images != null)
             {
-                contentParts = new object[]
+                foreach (ImageInput img in images)
                 {
-                    new
+                    content.Add(new
                     {
                         type = "image",
-                        source = new { type = "base64", media_type = imageMimeType, data = Convert.ToBase64String(imageBytes) }
-                    },
-                    new { type = "text", text = textContent }
-                };
+                        source = new { type = "base64", media_type = img.MimeType, data = Convert.ToBase64String(img.Bytes) }
+                    });
+                }
             }
-            else
-            {
-                contentParts = new object[] { new { type = "text", text = textContent } };
-            }
-
-            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), contentParts);
+            content.Add(new { type = "text", text });
+            return content.ToArray();
         }
 
         private async Task<string> SendAsync(string systemPrompt, object[] userContent)

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -7,7 +8,7 @@ namespace ArchSmarterFamFab.Data
 {
     /// <summary>
     /// Moonshot Kimi client. Moonshot exposes an OpenAI-compatible Chat Completions API,
-    /// so the image is sent as a base64 data URL inside a multi-part user message.
+    /// so images are sent as base64 data URLs inside a multi-part user message.
     /// </summary>
     public class KimiClient : IFamilyModelClient
     {
@@ -22,47 +23,39 @@ namespace ArchSmarterFamFab.Data
             _modelName = modelName;
         }
 
-        public Task<string> GenerateFamilyFromImageAsync(byte[] imageBytes, string mimeType,
+        public Task<string> GenerateFamilyFromImagesAsync(IReadOnlyList<ImageInput> images,
             string skillPrompt, string schemaJson, string userContext = null)
         {
             string userText = LlmPrompts.GenerateUserText;
             if (!string.IsNullOrEmpty(userContext))
                 userText += "\n\nAdditional context from the user:\n" + userContext;
 
-            string dataUrl = "data:" + mimeType + ";base64," + Convert.ToBase64String(imageBytes);
-            var content = new object[]
-            {
-                new { type = "image_url", image_url = new { url = dataUrl } },
-                new { type = "text", text = userText }
-            };
-
-            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), content);
+            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), BuildContent(images, userText));
         }
 
         public Task<string> RefineFamilyAsync(string currentJson, string userInstruction,
-            string skillPrompt, string schemaJson, byte[] imageBytes = null, string imageMimeType = null)
+            string skillPrompt, string schemaJson, IReadOnlyList<ImageInput> images = null)
         {
             string text = LlmPrompts.RefineUserText(currentJson, userInstruction);
-
-            object userContent;
-            if (imageBytes != null && !string.IsNullOrEmpty(imageMimeType))
-            {
-                string dataUrl = "data:" + imageMimeType + ";base64," + Convert.ToBase64String(imageBytes);
-                userContent = new object[]
-                {
-                    new { type = "image_url", image_url = new { url = dataUrl } },
-                    new { type = "text", text }
-                };
-            }
-            else
-            {
-                userContent = text;
-            }
-
-            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), userContent);
+            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), BuildContent(images, text));
         }
 
-        private async Task<string> SendAsync(string systemPrompt, object userContent)
+        private static object[] BuildContent(IReadOnlyList<ImageInput> images, string text)
+        {
+            var content = new List<object>();
+            if (images != null)
+            {
+                foreach (ImageInput img in images)
+                {
+                    string dataUrl = "data:" + img.MimeType + ";base64," + Convert.ToBase64String(img.Bytes);
+                    content.Add(new { type = "image_url", image_url = new { url = dataUrl } });
+                }
+            }
+            content.Add(new { type = "text", text });
+            return content.ToArray();
+        }
+
+        private async Task<string> SendAsync(string systemPrompt, object[] userContent)
         {
             var requestBody = new
             {

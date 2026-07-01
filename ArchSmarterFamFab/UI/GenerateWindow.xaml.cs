@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 using ArchSmarterFamFab.Data;
@@ -9,10 +11,11 @@ namespace ArchSmarterFamFab.UI
     {
         private readonly string _apiKey;
         private readonly FamFabSettingsManager _settingsManager;
+        private readonly List<ImageInput> _images = new List<ImageInput>();
+        private string _firstImagePath;
 
         public string FamilyJson { get; private set; }
-        public byte[] SourceImageBytes { get; private set; }
-        public string SourceImageMimeType { get; private set; }
+        public IReadOnlyList<ImageInput> SourceImages { get; private set; }
         public string UserContext { get; private set; }
         public string FamilyName { get; private set; }
 
@@ -41,25 +44,41 @@ namespace ArchSmarterFamFab.UI
         {
             var dlg = new OpenFileDialog
             {
-                Title = "Select an image of the object to create",
+                Title = "Select one or more images of the object to create",
                 Filter = "Image Files|*.jpg;*.jpeg;*.png;*.webp|All Files|*.*",
-                Multiselect = false
+                Multiselect = true
             };
 
-            if (dlg.ShowDialog() == true)
+            if (dlg.ShowDialog() != true)
+                return;
+
+            _images.Clear();
+            foreach (string path in dlg.FileNames)
             {
-                TxtFilePath.Text = dlg.FileName;
-                BtnGenerate.IsEnabled = true;
-                LoadPreview(dlg.FileName);
+                try
+                {
+                    byte[] bytes = System.IO.File.ReadAllBytes(path);
+                    _images.Add(new ImageInput(bytes, MimeFromPath(path)));
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Failed to read image '{path}': {ex.Message}");
+                }
             }
+
+            _firstImagePath = _images.Count > 0 ? dlg.FileNames[0] : null;
+            TxtFilePath.Text = _images.Count == 1
+                ? System.IO.Path.GetFileName(dlg.FileNames[0])
+                : $"{_images.Count} images selected";
+            BtnGenerate.IsEnabled = _images.Count > 0;
+            LoadPreview(_firstImagePath);
         }
 
         private async void BtnGenerate_Click(object sender, RoutedEventArgs e)
         {
-            string imagePath = TxtFilePath.Text;
-            if (string.IsNullOrWhiteSpace(imagePath) || !System.IO.File.Exists(imagePath))
+            if (_images.Count == 0)
             {
-                System.Windows.MessageBox.Show("Please select a valid image file.", "FamFab",
+                System.Windows.MessageBox.Show("Please select at least one image file.", "FamFab",
                     System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
                 return;
             }
@@ -67,30 +86,22 @@ namespace ArchSmarterFamFab.UI
             string modelName = CmbModel.SelectedItem as string ?? _settingsManager.GetModelName();
             _settingsManager.SetModelName(modelName);
 
-            SetGenerating(true, "Analyzing image...");
+            SetGenerating(true, "Analyzing image(s)...");
 
             try
             {
-                string extension = System.IO.Path.GetExtension(imagePath).ToLowerInvariant();
-                string mimeType = extension switch
-                {
-                    ".jpg" or ".jpeg" => "image/jpeg",
-                    ".png" => "image/png",
-                    ".webp" => "image/webp",
-                    _ => "image/jpeg"
-                };
-
-                byte[] imageBytes = System.IO.File.ReadAllBytes(imagePath);
                 string skillPrompt = SkillResources.GetSkillPrompt();
                 string schema = SkillResources.GetFamilySchema();
 
-                SetGenerating(true, $"Sending image to {LlmProviders.DisplayName(_settingsManager.GetProvider())} ({modelName}). This may take a few minutes . . .");
+                string plural = _images.Count == 1 ? "image" : "images";
+                SetGenerating(true, $"Sending {_images.Count} {plural} to {LlmProviders.DisplayName(_settingsManager.GetProvider())} ({modelName}). This may take a few minutes . . .");
 
                 string userContext = TxtContext.Text?.Trim();
+                var images = _images.ToList();
 
                 var client = LlmClientFactory.Create(_settingsManager.GetProvider(), _apiKey, modelName);
                 string json = await Task.Run(() =>
-                    client.GenerateFamilyFromImageAsync(imageBytes, mimeType, skillPrompt, schema, userContext));
+                    client.GenerateFamilyFromImagesAsync(images, skillPrompt, schema, userContext));
 
                 SetGenerating(true, "Validating response...");
 
@@ -106,8 +117,7 @@ namespace ArchSmarterFamFab.UI
                 }
 
                 FamilyJson = json;
-                SourceImageBytes = imageBytes;
-                SourceImageMimeType = mimeType;
+                SourceImages = images;
                 UserContext = userContext;
                 FamilyName = TxtFamilyName.Text?.Trim();
                 DialogResult = true;
@@ -115,7 +125,7 @@ namespace ArchSmarterFamFab.UI
             catch (LlmException ex)
             {
                 Debug.WriteLine($"Response: {ex.ResponseJson}");
-                System.Windows.MessageBox.Show($"Model API error: {ex.Message}",
+                System.Windows.MessageBox.Show($"Model API error: {ex.Message}{ex.Detail}",
                     "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                 SetGenerating(false);
             }
@@ -175,8 +185,26 @@ namespace ArchSmarterFamFab.UI
             DialogResult = false;
         }
 
+        private static string MimeFromPath(string path)
+        {
+            string extension = System.IO.Path.GetExtension(path).ToLowerInvariant();
+            return extension switch
+            {
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".webp" => "image/webp",
+                _ => "image/jpeg"
+            };
+        }
+
         private void LoadPreview(string imagePath)
         {
+            if (string.IsNullOrEmpty(imagePath))
+            {
+                PreviewBorder.Visibility = System.Windows.Visibility.Collapsed;
+                return;
+            }
+
             try
             {
                 var bitmap = new BitmapImage();

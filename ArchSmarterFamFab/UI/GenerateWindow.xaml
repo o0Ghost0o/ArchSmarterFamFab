@@ -92,12 +92,12 @@
                 </Grid.RowDefinitions>
 
                 <!-- Header -->
-                <TextBlock Grid.Row="0" Text="Select an image to generate a Revit family"
+                <TextBlock Grid.Row="0" Text="Select one or more images to generate a Revit family"
                            FontSize="13" Foreground="{StaticResource TextSecondaryBrush}"/>
 
                 <!-- Image File -->
                 <StackPanel Grid.Row="2">
-                    <TextBlock Text="Image File" Margin="0,0,0,6" FontWeight="SemiBold"/>
+                    <TextBlock Text="Image File(s)" Margin="0,0,0,6" FontWeight="SemiBold"/>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -107,7 +107,7 @@
                                 BorderBrush="{StaticResource FamFabBorderBrush}"
                                 BorderThickness="1" CornerRadius="4" Padding="10,7">
                             <TextBlock x:Name="TxtFilePath"
-                                       Text="No file selected"
+                                       Text="No files selected"
                                        Foreground="{StaticResource TextSecondaryBrush}"
                                        FontSize="13" VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis"/>

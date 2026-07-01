@@ -1,13 +1,13 @@
 # Family Fabricator (Fam|Fab) — AI-Powered Revit Family Generator
 
-FamFab is an open-source Revit add-in that generates parametric families from images. Snap a photo of a piece of furniture, a light fixture, or any building component, and FamFab uses the Claude API to create a fully parametric Revit family — complete with 3D geometry, parameters, and subcategories.
+FamFab is an open-source Revit add-in that generates parametric families from images. Snap one or more photos of a piece of furniture, a light fixture, or any building component, and FamFab uses a vision AI model — Claude, Gemini, or Kimi — to create a fully parametric Revit family — complete with 3D geometry, parameters, and subcategories.
 
 ## How It Works
 
 1. **Open the Family Editor** with the appropriate template (Generic Model, Furniture, etc.)
 2. **Click the FamFab button** on the ribbon (ArchSmarter tab)
-3. **Pick an image** — a photo, catalog screenshot, or sketch
-4. **FamFab sends the image to Claude** with a structured skill prompt and receives a JSON family definition
+3. **Pick one or more images** — photos, catalog screenshots, or sketches (e.g. front, side, top, detail views)
+4. **FamFab sends the images to your chosen model provider** with a structured skill prompt and receives a JSON family definition
 5. **Review the 3D preview** — an interactive Three.js viewer lets you rotate, zoom, and adjust parameters in real time
 6. **Click Generate** — the JSON is executed in the Family Editor to create the geometry, parameters, reference planes, and subcategories
 
@@ -50,7 +50,7 @@ You can also **load a JSON file directly** to skip the API call, or use the **Re
 
 1. Open a new family using an appropriate template
 2. Click the **FamFab** button
-3. Browse to an image of the object you want to create
+3. Browse to one or more images of the object you want to create (e.g. front, side, top, detail views)
 4. Optionally enter a family name and additional context (e.g., "36 inch wide, wall-mounted")
 5. Click **Generate** and wait for the API response
 6. In the preview window, review the 3D model and adjust parameters using the side panel

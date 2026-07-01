@@ -39,10 +39,10 @@ namespace ArchSmarterFamFab
             string familyJson = generateWindow.FamilyJson;
             string familyName = generateWindow.FamilyName;
             SaveJson(familyJson, "api-response", familyName);
-            string sourceImagePath = SaveSourceImage(generateWindow.SourceImageBytes, generateWindow.SourceImageMimeType, familyName);
+            string sourceImagePath = SaveSourceImages(generateWindow.SourceImages, familyName);
 
             var previewWindow = new PreviewWindow(familyJson, settingsManager.GetProvider(), apiKey, settingsManager.GetModelName(),
-                generateWindow.SourceImageBytes, generateWindow.SourceImageMimeType, sourceImagePath, familyName);
+                generateWindow.SourceImages, sourceImagePath, familyName);
             new WindowInteropHelper(previewWindow).Owner = uiapp.MainWindowHandle;
 
             if (previewWindow.ShowDialog() == true && previewWindow.GenerateRequested)
@@ -82,7 +82,19 @@ namespace ArchSmarterFamFab
             return Result.Succeeded;
         }
 
-        private static string SaveSourceImage(byte[] imageBytes, string mimeType, string familyName = null)
+        private static string SaveSourceImages(IReadOnlyList<ImageInput> images, string familyName = null)
+        {
+            if (images == null || images.Count == 0) return null;
+            string firstPath = null;
+            for (int i = 0; i < images.Count; i++)
+            {
+                string path = SaveSourceImage(images[i].Bytes, images[i].MimeType, familyName, i, images.Count);
+                if (i == 0) firstPath = path;
+            }
+            return firstPath;
+        }
+
+        private static string SaveSourceImage(byte[] imageBytes, string mimeType, string familyName, int index, int total)
         {
             if (imageBytes == null) return null;
             try
@@ -98,9 +110,10 @@ namespace ArchSmarterFamFab
                 };
                 string timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
                 string slug = SanitizeFileName(familyName);
+                string suffix = total > 1 ? $"-source-{index + 1}" : "-source";
                 string baseName = string.IsNullOrEmpty(slug)
-                    ? $"{timestamp}-source"
-                    : $"{timestamp}-{slug}-source";
+                    ? $"{timestamp}{suffix}"
+                    : $"{timestamp}-{slug}{suffix}";
                 string path = Path.Combine(folder, $"{baseName}{ext}");
                 File.WriteAllBytes(path, imageBytes);
                 return path;

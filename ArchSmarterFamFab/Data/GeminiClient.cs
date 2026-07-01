@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -5,7 +6,7 @@ using System.Threading.Tasks;
 namespace ArchSmarterFamFab.Data
 {
     /// <summary>
-    /// Google Gemini client (Generative Language API v1beta). Sends the image as
+    /// Google Gemini client (Generative Language API v1beta). Sends one or more images as
     /// inline base64 data plus a system instruction, and requests a JSON response.
     /// </summary>
     public class GeminiClient : IFamilyModelClient
@@ -21,42 +22,33 @@ namespace ArchSmarterFamFab.Data
             _modelName = modelName;
         }
 
-        public Task<string> GenerateFamilyFromImageAsync(byte[] imageBytes, string mimeType,
+        public Task<string> GenerateFamilyFromImagesAsync(IReadOnlyList<ImageInput> images,
             string skillPrompt, string schemaJson, string userContext = null)
         {
             string userText = LlmPrompts.GenerateUserText;
             if (!string.IsNullOrEmpty(userContext))
                 userText += "\n\nAdditional context from the user:\n" + userContext;
 
-            var parts = new object[]
-            {
-                new { inline_data = new { mime_type = mimeType, data = Convert.ToBase64String(imageBytes) } },
-                new { text = userText }
-            };
-
-            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), parts);
+            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), BuildParts(images, userText));
         }
 
         public Task<string> RefineFamilyAsync(string currentJson, string userInstruction,
-            string skillPrompt, string schemaJson, byte[] imageBytes = null, string imageMimeType = null)
+            string skillPrompt, string schemaJson, IReadOnlyList<ImageInput> images = null)
         {
             string text = LlmPrompts.RefineUserText(currentJson, userInstruction);
+            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), BuildParts(images, text));
+        }
 
-            object[] parts;
-            if (imageBytes != null && !string.IsNullOrEmpty(imageMimeType))
+        private static object[] BuildParts(IReadOnlyList<ImageInput> images, string text)
+        {
+            var parts = new List<object>();
+            if (images != null)
             {
-                parts = new object[]
-                {
-                    new { inline_data = new { mime_type = imageMimeType, data = Convert.ToBase64String(imageBytes) } },
-                    new { text }
-                };
+                foreach (ImageInput img in images)
+                    parts.Add(new { inline_data = new { mime_type = img.MimeType, data = Convert.ToBase64String(img.Bytes) } });
             }
-            else
-            {
-                parts = new object[] { new { text } };
-            }
-
-            return SendAsync(LlmPrompts.SystemPrompt(skillPrompt, schemaJson), parts);
+            parts.Add(new { text });
+            return parts.ToArray();
         }
 
         private async Task<string> SendAsync(string systemPrompt, object[] userParts)

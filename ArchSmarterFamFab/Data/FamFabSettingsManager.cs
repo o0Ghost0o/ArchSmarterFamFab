@@ -94,15 +94,15 @@ namespace ArchSmarterFamFab.Data
         {
             switch (GetProvider())
             {
-                case LlmProviders.Google: return _settings.GeminiApiKey ?? "";
-                case LlmProviders.Moonshot: return _settings.MoonshotApiKey ?? "";
-                default: return _settings.ClaudeApiKey ?? "";
+                case LlmProviders.Google: return (_settings.GeminiApiKey ?? "").Trim();
+                case LlmProviders.Moonshot: return (_settings.MoonshotApiKey ?? "").Trim();
+                default: return (_settings.ClaudeApiKey ?? "").Trim();
             }
         }
 
         public void SetApiKey(string apiKey)
         {
-            apiKey ??= "";
+            apiKey = (apiKey ?? "").Trim();
             switch (GetProvider())
             {
                 case LlmProviders.Google: _settings.GeminiApiKey = apiKey; break;

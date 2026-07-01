@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows;
 using Microsoft.Web.WebView2.Core;
@@ -12,8 +13,7 @@ namespace ArchSmarterFamFab.UI
         private readonly string _provider;
         private readonly string _apiKey;
         private readonly string _modelName;
-        private readonly byte[] _sourceImageBytes;
-        private readonly string _sourceImageMimeType;
+        private readonly IReadOnlyList<ImageInput> _sourceImages;
         private readonly string _sourceImagePath;
 
         public string FinalFamilyJson { get; private set; }
@@ -21,7 +21,7 @@ namespace ArchSmarterFamFab.UI
         public string FamilyName { get; private set; }
 
         public PreviewWindow(string familyJson, string provider, string apiKey, string modelName,
-            byte[] sourceImageBytes = null, string sourceImageMimeType = null,
+            IReadOnlyList<ImageInput> sourceImages = null,
             string sourceImagePath = null, string familyName = null)
         {
             InitializeComponent();
@@ -29,8 +29,7 @@ namespace ArchSmarterFamFab.UI
             _provider = provider;
             _apiKey = apiKey;
             _modelName = modelName;
-            _sourceImageBytes = sourceImageBytes;
-            _sourceImageMimeType = sourceImageMimeType;
+            _sourceImages = sourceImages;
             _sourceImagePath = sourceImagePath;
             TxtFamilyName.Text = familyName ?? "";
             Loaded += PreviewWindow_Loaded;
@@ -78,12 +77,14 @@ namespace ArchSmarterFamFab.UI
 
         private void LoadSourceImagePreview()
         {
-            if (_sourceImageBytes == null || _sourceImageBytes.Length == 0) return;
+            if (_sourceImages == null || _sourceImages.Count == 0) return;
+            byte[] bytes = _sourceImages[0].Bytes;
+            if (bytes == null || bytes.Length == 0) return;
             try
             {
                 var bmp = new System.Windows.Media.Imaging.BitmapImage();
                 bmp.BeginInit();
-                bmp.StreamSource = new System.IO.MemoryStream(_sourceImageBytes);
+                bmp.StreamSource = new System.IO.MemoryStream(bytes);
                 bmp.DecodePixelWidth = 300;
                 bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
                 bmp.EndInit();
@@ -216,8 +217,7 @@ namespace ArchSmarterFamFab.UI
 
                 var client = LlmClientFactory.Create(_provider, _apiKey, _modelName);
                 string newJson = await Task.Run(() =>
-                    client.RefineFamilyAsync(_currentFamilyJson, instruction, skillPrompt, schema,
-                        _sourceImageBytes, _sourceImageMimeType));
+                    client.RefineFamilyAsync(_currentFamilyJson, instruction, skillPrompt, schema, _sourceImages));
 
                 using JsonDocument testParse = JsonDocument.Parse(newJson);
                 if (!testParse.RootElement.TryGetProperty("metadata", out _) ||
@@ -239,7 +239,7 @@ namespace ArchSmarterFamFab.UI
             catch (LlmException ex)
             {
                 Debug.WriteLine($"Response: {ex.ResponseJson}");
-                System.Windows.MessageBox.Show($"Model API error: {ex.Message}",
+                System.Windows.MessageBox.Show($"Model API error: {ex.Message}{ex.Detail}",
                     "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
             }
             catch (JsonException ex)

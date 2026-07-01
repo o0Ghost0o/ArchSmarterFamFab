@@ -16,9 +16,9 @@ The user flow, implemented in `CmdFamFab.cs`:
 1. User opens Revit's **Family Editor** (the add-in refuses to run anywhere else).
 2. User clicks the **Fabricate** button on the **ArchSmarter** ribbon tab, in the
    **Family Fabricator** panel.
-3. In the **Generate** window the user picks an image (`.jpg/.jpeg/.png/.webp`),
+3. In the **Generate** window the user picks one or more images (`.jpg/.jpeg/.png/.webp`),
    optionally sets a family name, a model, and extra text context.
-4. The image + an embedded "skill" system prompt + the JSON schema are sent to
+4. The image(s) + an embedded "skill" system prompt + the JSON schema are sent to
    the selected provider, which returns a JSON family definition (schema version `0.1`).
 5. The **Preview** window hosts a Three.js viewer in WebView2 for interactive 3D
    review and parameter editing; the user can also **Refine** the design with a
@@ -138,7 +138,7 @@ Windows + a Revit install are required. There is no CLI test suite and no CI.
 - **Model clients** implement `IFamilyModelClient` (`GenerateFamilyFromImageAsync`,
   `RefineFamilyAsync`); `LlmClientFactory.Create(provider, key, model)` picks the
   implementation from the stored provider. All share the embedded SKILL.md + schema
-  system prompt (built in `LlmSupport.LlmPrompts`), send the image as base64, use
+  system prompt (built in `LlmSupport.LlmPrompts`), send one or more images as base64, use
   `max_tokens/maxOutputTokens = 32768` and a 300s `HttpClient` timeout, then run
   `LlmSupport.LlmJson.CleanJsonResponse` (strip fences / extract the `{...}` object).
   Any failure throws `LlmException` (carrying the raw response JSON); a token-limit
