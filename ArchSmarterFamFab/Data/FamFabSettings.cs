@@ -5,6 +5,9 @@ namespace ArchSmarterFamFab.Data
         /// <summary>Active model provider. One of the <see cref="LlmProviders"/> constants.</summary>
         public string Provider { get; set; } = LlmProviders.Anthropic;
 
+        /// <summary>Apply the source photo to the generated geometry as a bitmap texture material.</summary>
+        public bool ApplyPhotoTexture { get; set; } = true;
+
         // BYOK: one plaintext API key per provider.
         public string ClaudeApiKey { get; set; } = "";
         public string GeminiApiKey { get; set; } = "";

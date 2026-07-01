@@ -87,6 +87,12 @@ namespace ArchSmarterFamFab.UI
 
         public ObservableCollection<string> AvailableModels { get; }
 
+        public bool ApplyPhotoTexture
+        {
+            get => _settingsManager.GetApplyPhotoTexture();
+            set { _settingsManager.SetApplyPhotoTexture(value); OnPropertyChanged(); }
+        }
+
         private string _keyLabel;
         public string KeyLabel
         {

@@ -123,6 +123,9 @@
 
                 <!-- Status -->
                 <StackPanel Grid.Row="6">
+                    <CheckBox Content="Apply source photo as texture"
+                              IsChecked="{Binding ApplyPhotoTexture, Mode=TwoWay}"
+                              Foreground="#e0e0e0" Margin="0,0,0,10"/>
                     <TextBlock Text="{Binding StatusText}"
                                Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
                                TextWrapping="Wrap"/>

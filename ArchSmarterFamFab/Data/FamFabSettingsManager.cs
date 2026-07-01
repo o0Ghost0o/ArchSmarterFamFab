@@ -155,6 +155,17 @@ namespace ArchSmarterFamFab.Data
             return (models == null || models.Count == 0) ? fallback : models;
         }
 
+        public bool GetApplyPhotoTexture()
+        {
+            return _settings.ApplyPhotoTexture;
+        }
+
+        public void SetApplyPhotoTexture(bool value)
+        {
+            _settings.ApplyPhotoTexture = value;
+            SaveSettings();
+        }
+
         public static string GetLogsFolderPath()
         {
             return Path.Combine(

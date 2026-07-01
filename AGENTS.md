@@ -165,6 +165,15 @@ Windows + a Revit install are required. There is no CLI test suite and no CI.
   substituting parameter defaults and calling `DataTable.Compute`; all lengths go
   through `UnitUtils.ConvertToInternalUnits` (Revit's internal unit is decimal feet).
   Results/warnings are collected in `GenerationResult`.
+- **Photo texture (optional):** `FamilyGenerator.Execute` takes an optional `texturePath`.
+  When the `ApplyPhotoTexture` setting is on and a source image exists, `CmdFamFab` passes the
+  first saved source image; the generator creates a `Material`, clones a "Generic"
+  `AppearanceAssetElement`, connects a `UnifiedBitmapSchema` to `generic_diffuse` via
+  `AppearanceAssetEditScope`, and assigns the material to every solid form
+  (`MATERIAL_ID_PARAM`). Uses `Autodesk.Revit.DB.Visual`; the whole step is wrapped in
+  try/catch so a texture failure only adds a warning and never blocks generation. Bitmap
+  textures are external file references (break if the image moves) and project planarly onto
+  the geometry — expect distortion on curved/parametric massing.
 - **Preview / WebView2:** `PreviewWindow` creates a `CoreWebView2` with a user-data
   folder under `%LocalAppData%\ArchSmarter\FamFab\WebView2`, loads the viewer via
   `NavigateToString`, injects a JS host bridge, and communicates with

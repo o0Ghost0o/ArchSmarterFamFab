@@ -1,4 +1,5 @@
 using System.Data;
+using Autodesk.Revit.DB.Visual;
 
 namespace ArchSmarterFamFab.Data
 {
@@ -38,7 +39,7 @@ namespace ArchSmarterFamFab.Data
             "Wall Closure"
         };
 
-        public GenerationResult Execute(Document doc, Autodesk.Revit.ApplicationServices.Application app, string familyJson)
+        public GenerationResult Execute(Document doc, Autodesk.Revit.ApplicationServices.Application app, string familyJson, string texturePath = null)
         {
             var result = new GenerationResult();
 
@@ -298,6 +299,26 @@ namespace ArchSmarterFamFab.Data
                             result.Errors.Add($"'{geomName}': {error}");
                     }
 
+                    // Step 5: Optional photo texture material
+                    if (!string.IsNullOrEmpty(texturePath) && File.Exists(texturePath) && result.GeometryCount > 0)
+                    {
+                        try
+                        {
+                            ElementId materialId = CreateTexturedMaterial(doc, root, texturePath);
+                            if (materialId != null && materialId != ElementId.InvalidElementId)
+                            {
+                                int applied = ApplyMaterialToSolids(doc, materialId);
+                                if (applied == 0)
+                                    result.Errors.Add("Texture: material created but no solid geometry accepted it.");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"Texture material failed: {ex.Message}");
+                            result.Errors.Add($"Texture: {ex.Message}");
+                        }
+                    }
+
                     doc.Regenerate();
                     trans.Commit();
                     result.Success = true;
@@ -311,6 +332,100 @@ namespace ArchSmarterFamFab.Data
 
             result.ErrorCount = result.Errors.Count;
             return result;
+        }
+
+        private static int ApplyMaterialToSolids(Document doc, ElementId materialId)
+        {
+            var forms = new List<Element>();
+            forms.AddRange(new FilteredElementCollector(doc).OfClass(typeof(Extrusion)).ToElements());
+            forms.AddRange(new FilteredElementCollector(doc).OfClass(typeof(Sweep)).ToElements());
+            forms.AddRange(new FilteredElementCollector(doc).OfClass(typeof(Blend)).ToElements());
+
+            int applied = 0;
+            foreach (Element form in forms)
+            {
+                if (form is GenericForm gf && !gf.IsSolid) continue; // voids carry no material
+                Parameter mp = form.get_Parameter(BuiltInParameter.MATERIAL_ID_PARAM);
+                if (mp != null && !mp.IsReadOnly && mp.StorageType == StorageType.ElementId)
+                {
+                    mp.Set(materialId);
+                    applied++;
+                }
+            }
+            return applied;
+        }
+
+        private static ElementId CreateTexturedMaterial(Document doc, JsonElement root, string texturePath)
+        {
+            string baseName = "FamFab Photo";
+            if (root.TryGetProperty("metadata", out var meta) &&
+                meta.TryGetProperty("name", out var nm) &&
+                nm.ValueKind == JsonValueKind.String &&
+                !string.IsNullOrWhiteSpace(nm.GetString()))
+            {
+                baseName = "FamFab " + nm.GetString().Trim();
+            }
+
+            string materialName = UniqueElementName(doc, typeof(Material), baseName);
+            ElementId materialId = Material.Create(doc, materialName);
+            Material material = doc.GetElement(materialId) as Material;
+            if (material == null) return ElementId.InvalidElementId;
+
+            // Clone an existing "Generic" appearance asset, then point its diffuse channel
+            // at the bitmap. Requires an appearance asset to exist in the document.
+            AppearanceAssetElement templateAsset = new FilteredElementCollector(doc)
+                .OfClass(typeof(AppearanceAssetElement))
+                .Cast<AppearanceAssetElement>()
+                .FirstOrDefault(a => a.Name.IndexOf("Generic", StringComparison.OrdinalIgnoreCase) >= 0)
+                ?? new FilteredElementCollector(doc)
+                    .OfClass(typeof(AppearanceAssetElement))
+                    .Cast<AppearanceAssetElement>()
+                    .FirstOrDefault();
+
+            if (templateAsset == null)
+                return materialId; // No appearance asset to clone; material keeps its default shading.
+
+            AppearanceAssetElement newAsset = templateAsset.Duplicate(
+                UniqueElementName(doc, typeof(AppearanceAssetElement), materialName + " Appearance"));
+            material.AppearanceAssetId = newAsset.Id;
+
+            using (AppearanceAssetEditScope editScope = new AppearanceAssetEditScope(doc))
+            {
+                Asset editableAsset = editScope.Start(newAsset.Id);
+                AssetProperty diffuse = editableAsset.FindByName("generic_diffuse");
+                if (diffuse != null)
+                {
+                    if (diffuse.NumberOfConnectedProperties == 0)
+                        diffuse.AddConnectedAsset("UnifiedBitmapSchema");
+
+                    if (diffuse.NumberOfConnectedProperties > 0 &&
+                        diffuse.GetConnectedProperty(0) is Asset connected &&
+                        connected.FindByName(UnifiedBitmap.UnifiedbitmapBitmap) is AssetPropertyString bitmap &&
+                        bitmap.IsValidValue(texturePath))
+                    {
+                        bitmap.Value = texturePath;
+                    }
+                }
+                editScope.Commit(true);
+            }
+
+            return materialId;
+        }
+
+        private static string UniqueElementName(Document doc, Type elementType, string desired)
+        {
+            var used = new HashSet<string>(
+                new FilteredElementCollector(doc).OfClass(elementType)
+                    .Select(e => e.Name).Where(n => !string.IsNullOrEmpty(n)),
+                StringComparer.OrdinalIgnoreCase);
+
+            if (!used.Contains(desired)) return desired;
+            for (int i = 2; i < 1000; i++)
+            {
+                string candidate = desired + " " + i;
+                if (!used.Contains(candidate)) return candidate;
+            }
+            return desired + " " + Guid.NewGuid().ToString("N").Substring(0, 6);
         }
 
         private void ClearExistingContent(Document doc)

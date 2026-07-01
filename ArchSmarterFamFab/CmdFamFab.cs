@@ -53,7 +53,10 @@ namespace ArchSmarterFamFab
 
                 var generator = new FamilyGenerator();
                 Autodesk.Revit.ApplicationServices.Application app = uiapp.Application;
-                GenerationResult genResult = generator.Execute(doc, app, finalJson);
+                string texturePath = (settingsManager.GetApplyPhotoTexture()
+                        && !string.IsNullOrEmpty(sourceImagePath) && File.Exists(sourceImagePath))
+                    ? sourceImagePath : null;
+                GenerationResult genResult = generator.Execute(doc, app, finalJson, texturePath);
 
                 if (genResult.Success)
                 {
