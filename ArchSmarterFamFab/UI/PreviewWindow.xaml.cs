@@ -73,12 +73,6 @@ namespace ArchSmarterFamFab.UI
                 string viewerHtml = SkillResources.GetViewerHtml();
                 viewerHtml = InjectHostBridge(viewerHtml);
 
-                // Inject mesh loading if in mesh mode
-                if (_isMeshMode && !string.IsNullOrEmpty(_meshPath))
-                {
-                    viewerHtml = InjectMeshLoader(viewerHtml, _meshPath, _texturePath);
-                }
-
                 WebView.CoreWebView2.NavigateToString(viewerHtml);
                 WebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
             }
@@ -204,7 +198,7 @@ namespace ArchSmarterFamFab.UI
 
             try
             {
-                // Copy mesh to a temp location with file:// access
+                // Copy mesh to a temp location and set up virtual host mapping
                 string tempDir = Path.Combine(Path.GetTempPath(), "famfab_mesh_viewer");
                 Directory.CreateDirectory(tempDir);
                 string tempMesh = Path.Combine(tempDir, "mesh.obj");
@@ -217,16 +211,69 @@ namespace ArchSmarterFamFab.UI
                     File.Copy(_texturePath, tempTexture, true);
                 }
 
-                string meshUrl = new Uri(tempMesh).ToString().Replace("file://", "");
-                string textureUrl = tempTexture != null ? new Uri(tempTexture).ToString().Replace("file://", "") : "";
+                // Use virtual host mapping instead of file:// URLs (more reliable in WebView2)
+                WebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                    "famfab.mesh", tempDir, CoreWebView2HostResourceAccessKind.Allow);
 
-                string script = $@"try {{
-                    if (typeof loadMeshFromUrl === 'function') {{
-                        loadMeshFromUrl('file://{meshUrl.Replace("\\", "/")}', '{textureUrl.Replace("\\", "/")}');
-                    }} else {{
-                        console.error('loadMeshFromUrl not found');
-                    }}
-                }} catch(e) {{ console.error('Mesh load error:', e); }}";
+                string meshUrl = "https://famfab.mesh/mesh.obj";
+                string textureUrl = tempTexture != null ? "https://famfab.mesh/texture.png" : "";
+
+                // First ensure OBJLoader is available, then load the mesh
+                string script = $@"
+try {{
+    if (typeof THREE === 'undefined') {{
+        console.error('THREE.js not loaded');
+        document.getElementById('errorBanner').textContent = 'THREE.js not loaded';
+        document.getElementById('errorBanner').classList.add('show');
+    }} else if (typeof THREE.OBJLoader === 'undefined') {{
+        console.error('OBJLoader not available on THREE');
+        document.getElementById('errorBanner').textContent = 'OBJLoader not available. Check console.';
+        document.getElementById('errorBanner').classList.add('show');
+    }} else {{
+        console.log('Loading mesh from: {meshUrl}');
+        var loader = new THREE.OBJLoader();
+        loader.load('{meshUrl}', function(object) {{
+            console.log('Mesh loaded, children:', object.children.length);
+            object.traverse(function(child) {{
+                if (child.isMesh) {{
+                    child.material = new THREE.MeshStandardMaterial({{
+                        color: 0xb8c3d0,
+                        roughness: 0.55,
+                        metalness: 0.05
+                    }});
+                    {(tempTexture != null ? $@"
+                    var texLoader = new THREE.TextureLoader();
+                    texLoader.load('{textureUrl}', function(texture) {{
+                        child.material.map = texture;
+                        child.material.needsUpdate = true;
+                    }}, undefined, function(err) {{
+                        console.warn('Texture load failed:', err);
+                    }});" : "")}
+                }}
+            }});
+            scene.add(object);
+            var box = new THREE.Box3().setFromObject(object);
+            var center = new THREE.Vector3();
+            box.getCenter(center);
+            var size = new THREE.Vector3();
+            box.getSize(size);
+            var maxDim = Math.max(size.x, size.y, size.z);
+            target.copy(center);
+            sphericalRadius = maxDim * 2.5;
+            updateCameraFromSpherical();
+            document.getElementById('hudElements').textContent = object.children.length;
+            console.log('Mesh centered, size:', maxDim);
+        }}, undefined, function(err) {{
+            console.error('OBJ load error:', err);
+            document.getElementById('errorBanner').textContent = 'Failed to load mesh: ' + (err && err.message ? err.message : 'unknown error');
+            document.getElementById('errorBanner').classList.add('show');
+        }});
+    }}
+}} catch(e) {{
+    console.error('Mesh load script error:', e);
+    document.getElementById('errorBanner').textContent = 'Mesh load error: ' + e.message;
+    document.getElementById('errorBanner').classList.add('show');
+}}";
 
                 await WebView.CoreWebView2.ExecuteScriptAsync(script);
             }
@@ -382,59 +429,6 @@ var _originalRenderParams = typeof renderParams === 'function' ? renderParams : 
                 return html.Insert(bodyClose, bridgeScript);
 
             return html + bridgeScript;
-        }
-
-        private static string InjectMeshLoader(string html, string meshPath, string texturePath)
-        {
-            string loaderScript = @"
-<script>
-// TripoSR mesh loader
-function loadMeshFromUrl(meshUrl, textureUrl) {
-    console.log('Loading mesh from:', meshUrl);
-    if (typeof THREE === 'undefined' || !THREE.OBJLoader) {
-        console.error('THREE.js or OBJLoader not available');
-        return;
-    }
-    var loader = new THREE.OBJLoader();
-    loader.load(meshUrl, function(object) {
-        console.log('Mesh loaded, children:', object.children.length);
-        object.traverse(function(child) {
-            if (child.isMesh) {
-                child.material = new THREE.MeshStandardMaterial({
-                    color: 0xb8c3d0,
-                    roughness: 0.55,
-                    metalness: 0.05
-                });
-                if (textureUrl) {
-                    var texLoader = new THREE.TextureLoader();
-                    texLoader.load(textureUrl, function(texture) {
-                        child.material.map = texture;
-                        child.material.needsUpdate = true;
-                    });
-                }
-            }
-        });
-        scene.add(object);
-        // Center and fit
-        var box = new THREE.Box3().setFromObject(object);
-        var center = box.getCenter(new THREE.Vector3());
-        var size = box.getSize(new THREE.Vector3());
-        var maxDim = Math.max(size.x, size.y, size.z);
-        target.copy(center);
-        sphericalRadius = maxDim * 2.5;
-        updateCameraFromSpherical();
-        document.getElementById('hudElements').textContent = object.children.length;
-    }, undefined, function(err) {
-        console.error('OBJ load error:', err);
-    });
-}
-</script>";
-
-            int bodyClose = html.LastIndexOf("</body>");
-            if (bodyClose > 0)
-                return html.Insert(bodyClose, loaderScript);
-
-            return html + loaderScript;
         }
     }
 }
