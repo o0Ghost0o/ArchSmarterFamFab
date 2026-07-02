@@ -135,10 +135,10 @@ _ReSharper*/
 # TeamCity is a build add-in
 _TeamCity*
 
-# DotCover is a Code Coverage Tool
+# DotCover is a .NET Code Coverage Tool
 *.dotCover
 
-# AxoCover is a Code Coverage Tool
+# AxoCover is a .NET Code Coverage Tool
 .axoCover/*
 !.axoCover/settings.json
 
@@ -364,3 +364,10 @@ FodyWeavers.xsd
 
 # Claude Code
 .claude/
+
+# TripoSR / uv / Python
+.venv/
+uv.lock
+triposr_output/
+TestPaths/
+test-viewer.html
