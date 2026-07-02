@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 <PropertyGroup>
 	<UseWPF>true</UseWPF>
@@ -111,6 +111,10 @@ if not exist "$(AppData)\Autodesk\REVIT\Addins\$(RevitVersion)\ArchSmarterFamFab
 copy "$(MSBuildProjectDirectory)\*.addin" "$(AppData)\Autodesk\REVIT\Addins\$(RevitVersion)"
 copy "$(TargetDir)*.dll" "$(AppData)\Autodesk\REVIT\Addins\$(RevitVersion)\ArchSmarterFamFab"
 if exist "$(TargetDir)runtimes" xcopy "$(TargetDir)runtimes" "$(AppData)\Autodesk\REVIT\Addins\$(RevitVersion)\ArchSmarterFamFab\runtimes" /E /I /Y
+if exist "$(MSBuildProjectDirectory)\..\triposr_cli.py" copy "$(MSBuildProjectDirectory)\..\triposr_cli.py" "$(AppData)\Autodesk\REVIT\Addins\$(RevitVersion)\ArchSmarterFamFab"
+if exist "$(MSBuildProjectDirectory)\..\triposr" xcopy "$(MSBuildProjectDirectory)\..\triposr" "$(AppData)\Autodesk\REVIT\Addins\$(RevitVersion)\ArchSmarterFamFab\triposr" /E /I /Y
+if exist "$(MSBuildProjectDirectory)\..\pyproject.toml" copy "$(MSBuildProjectDirectory)\..\pyproject.toml" "$(AppData)\Autodesk\REVIT\Addins\$(RevitVersion)\ArchSmarterFamFab"
+if exist "$(MSBuildProjectDirectory)\..\uv.lock" copy "$(MSBuildProjectDirectory)\..\uv.lock" "$(AppData)\Autodesk\REVIT\Addins\$(RevitVersion)\ArchSmarterFamFab"
 	</PostBuildEvent>
 	<RunAnalyzersDuringBuild>False</RunAnalyzersDuringBuild>
 	<RunAnalyzersDuringLiveAnalysis>False</RunAnalyzersDuringLiveAnalysis>

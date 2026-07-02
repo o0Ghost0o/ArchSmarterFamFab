@@ -15,6 +15,9 @@ namespace ArchSmarterFamFab.UI
         private readonly string _modelName;
         private readonly IReadOnlyList<ImageInput> _sourceImages;
         private readonly string _sourceImagePath;
+        private readonly string _meshPath;
+        private readonly string _texturePath;
+        private readonly bool _isMeshMode;
 
         public string FinalFamilyJson { get; private set; }
         public bool GenerateRequested { get; private set; }
@@ -22,7 +25,8 @@ namespace ArchSmarterFamFab.UI
 
         public PreviewWindow(string familyJson, string provider, string apiKey, string modelName,
             IReadOnlyList<ImageInput> sourceImages = null,
-            string sourceImagePath = null, string familyName = null)
+            string sourceImagePath = null, string familyName = null,
+            string meshPath = null, string texturePath = null, bool isMeshMode = false)
         {
             InitializeComponent();
             _currentFamilyJson = familyJson;
@@ -31,6 +35,9 @@ namespace ArchSmarterFamFab.UI
             _modelName = modelName;
             _sourceImages = sourceImages;
             _sourceImagePath = sourceImagePath;
+            _meshPath = meshPath;
+            _texturePath = texturePath;
+            _isMeshMode = isMeshMode;
             TxtFamilyName.Text = familyName ?? "";
             Loaded += PreviewWindow_Loaded;
         }
@@ -65,6 +72,12 @@ namespace ArchSmarterFamFab.UI
 
                 string viewerHtml = SkillResources.GetViewerHtml();
                 viewerHtml = InjectHostBridge(viewerHtml);
+
+                // Inject mesh loading if in mesh mode
+                if (_isMeshMode && !string.IsNullOrEmpty(_meshPath))
+                {
+                    viewerHtml = InjectMeshLoader(viewerHtml, _meshPath, _texturePath);
+                }
 
                 WebView.CoreWebView2.NavigateToString(viewerHtml);
                 WebView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
@@ -155,8 +168,15 @@ namespace ArchSmarterFamFab.UI
             if (e.IsSuccess)
             {
                 _webViewReady = true;
-                LoadFamilyIntoViewer();
-                StatusText.Text = "Ready.";
+                if (_isMeshMode && !string.IsNullOrEmpty(_meshPath))
+                {
+                    LoadMeshIntoViewer();
+                }
+                else
+                {
+                    LoadFamilyIntoViewer();
+                }
+                StatusText.Text = _isMeshMode ? "TripoSR mesh loaded." : "Ready.";
             }
             else
             {
@@ -176,6 +196,45 @@ namespace ArchSmarterFamFab.UI
 
             string script = $"try {{ loadFamilyData(JSON.parse('{escapedJson}')); }} catch(e) {{ console.error('Load error:', e); }}";
             await WebView.CoreWebView2.ExecuteScriptAsync(script);
+        }
+
+        private async void LoadMeshIntoViewer()
+        {
+            if (!_webViewReady || string.IsNullOrEmpty(_meshPath)) return;
+
+            try
+            {
+                // Copy mesh to a temp location with file:// access
+                string tempDir = Path.Combine(Path.GetTempPath(), "famfab_mesh_viewer");
+                Directory.CreateDirectory(tempDir);
+                string tempMesh = Path.Combine(tempDir, "mesh.obj");
+                File.Copy(_meshPath, tempMesh, true);
+
+                string tempTexture = null;
+                if (!string.IsNullOrEmpty(_texturePath) && File.Exists(_texturePath))
+                {
+                    tempTexture = Path.Combine(tempDir, "texture.png");
+                    File.Copy(_texturePath, tempTexture, true);
+                }
+
+                string meshUrl = new Uri(tempMesh).ToString().Replace("file://", "");
+                string textureUrl = tempTexture != null ? new Uri(tempTexture).ToString().Replace("file://", "") : "";
+
+                string script = $@"try {{
+                    if (typeof loadMeshFromUrl === 'function') {{
+                        loadMeshFromUrl('file://{meshUrl.Replace("\\", "/")}', '{textureUrl.Replace("\\", "/")}');
+                    }} else {{
+                        console.error('loadMeshFromUrl not found');
+                    }}
+                }} catch(e) {{ console.error('Mesh load error:', e); }}";
+
+                await WebView.CoreWebView2.ExecuteScriptAsync(script);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to load mesh: {ex.Message}");
+                StatusText.Text = $"Mesh load failed: {ex.Message}";
+            }
         }
 
         private void CoreWebView2_WebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -204,6 +263,13 @@ namespace ArchSmarterFamFab.UI
 
         private async void BtnRefine_Click(object sender, RoutedEventArgs e)
         {
+            if (_isMeshMode)
+            {
+                System.Windows.MessageBox.Show("Refine is not available for 3D mesh mode. Use the AI Generate mode instead.",
+                    "FamFab", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                return;
+            }
+
             string instruction = TxtPrompt.Text?.Trim();
             if (string.IsNullOrEmpty(instruction))
                 return;
@@ -316,6 +382,59 @@ var _originalRenderParams = typeof renderParams === 'function' ? renderParams : 
                 return html.Insert(bodyClose, bridgeScript);
 
             return html + bridgeScript;
+        }
+
+        private static string InjectMeshLoader(string html, string meshPath, string texturePath)
+        {
+            string loaderScript = @"
+<script>
+// TripoSR mesh loader
+function loadMeshFromUrl(meshUrl, textureUrl) {
+    console.log('Loading mesh from:', meshUrl);
+    if (typeof THREE === 'undefined' || !THREE.OBJLoader) {
+        console.error('THREE.js or OBJLoader not available');
+        return;
+    }
+    var loader = new THREE.OBJLoader();
+    loader.load(meshUrl, function(object) {
+        console.log('Mesh loaded, children:', object.children.length);
+        object.traverse(function(child) {
+            if (child.isMesh) {
+                child.material = new THREE.MeshStandardMaterial({
+                    color: 0xb8c3d0,
+                    roughness: 0.55,
+                    metalness: 0.05
+                });
+                if (textureUrl) {
+                    var texLoader = new THREE.TextureLoader();
+                    texLoader.load(textureUrl, function(texture) {
+                        child.material.map = texture;
+                        child.material.needsUpdate = true;
+                    });
+                }
+            }
+        });
+        scene.add(object);
+        // Center and fit
+        var box = new THREE.Box3().setFromObject(object);
+        var center = box.getCenter(new THREE.Vector3());
+        var size = box.getSize(new THREE.Vector3());
+        var maxDim = Math.max(size.x, size.y, size.z);
+        target.copy(center);
+        sphericalRadius = maxDim * 2.5;
+        updateCameraFromSpherical();
+        document.getElementById('hudElements').textContent = object.children.length;
+    }, undefined, function(err) {
+        console.error('OBJ load error:', err);
+    });
+}
+</script>";
+
+            int bodyClose = html.LastIndexOf("</body>");
+            if (bodyClose > 0)
+                return html.Insert(bodyClose, loaderScript);
+
+            return html + loaderScript;
         }
     }
 }

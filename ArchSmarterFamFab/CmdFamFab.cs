@@ -42,7 +42,8 @@ namespace ArchSmarterFamFab
             string sourceImagePath = SaveSourceImages(generateWindow.SourceImages, familyName);
 
             var previewWindow = new PreviewWindow(familyJson, settingsManager.GetProvider(), apiKey, settingsManager.GetModelName(),
-                generateWindow.SourceImages, sourceImagePath, familyName);
+                generateWindow.SourceImages, sourceImagePath, familyName,
+                generateWindow.TripoSRMeshPath, generateWindow.TripoSRTexturePath, generateWindow.IsTripoSRMode);
             new WindowInteropHelper(previewWindow).Owner = uiapp.MainWindowHandle;
 
             if (previewWindow.ShowDialog() == true && previewWindow.GenerateRequested)
@@ -60,6 +61,11 @@ namespace ArchSmarterFamFab
 
                 if (genResult.Success)
                 {
+                    // Save to history after successful generation
+                    SaveToHistory(familyName, sourceImagePath, generateWindow.TripoSRMeshPath,
+                        generateWindow.TripoSRTexturePath, finalJson, generateWindow.IsTripoSRMode,
+                        genResult);
+
                     string summary = $"Family created successfully!\n\n" +
                         $"Parameters: {genResult.ParameterCount}\n" +
                         $"Reference Planes: {genResult.RefPlaneCount}\n" +
@@ -83,6 +89,64 @@ namespace ArchSmarterFamFab
             }
 
             return Result.Succeeded;
+        }
+
+        private static void SaveToHistory(string familyName, string sourceImagePath,
+            string meshPath, string texturePath, string familyJson, bool isTripoSRMode,
+            GenerationResult genResult)
+        {
+            try
+            {
+                var historyManager = new FamFabHistoryManager();
+                string historyFolder = FamFabHistoryManager.GetHistoryFolderPath();
+                Directory.CreateDirectory(historyFolder);
+
+                string timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+                string slug = SanitizeFileName(familyName) ?? timestamp;
+
+                // Copy source image to history
+                string historyImagePath = null;
+                if (!string.IsNullOrEmpty(sourceImagePath) && File.Exists(sourceImagePath))
+                {
+                    string ext = Path.GetExtension(sourceImagePath);
+                    historyImagePath = Path.Combine(historyFolder, $"{slug}-source{ext}");
+                    File.Copy(sourceImagePath, historyImagePath, true);
+                }
+
+                // Copy mesh to history
+                string historyMeshPath = null;
+                if (!string.IsNullOrEmpty(meshPath) && File.Exists(meshPath))
+                {
+                    historyMeshPath = Path.Combine(historyFolder, $"{slug}-mesh.obj");
+                    File.Copy(meshPath, historyMeshPath, true);
+                }
+
+                // Copy texture to history
+                string historyTexturePath = null;
+                if (!string.IsNullOrEmpty(texturePath) && File.Exists(texturePath))
+                {
+                    historyTexturePath = Path.Combine(historyFolder, $"{slug}-texture.png");
+                    File.Copy(texturePath, historyTexturePath, true);
+                }
+
+                // Save family JSON to history
+                string historyJsonPath = Path.Combine(historyFolder, $"{slug}-family.json");
+                File.WriteAllText(historyJsonPath, familyJson);
+
+                historyManager.AddEntry(
+                    familyName,
+                    historyImagePath,
+                    historyMeshPath,
+                    historyTexturePath,
+                    historyJsonPath,
+                    isTripoSRMode ? "triposr" : "llm",
+                    0, 0
+                );
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to save history: {ex.Message}");
+            }
         }
 
         private static string SaveSourceImages(IReadOnlyList<ImageInput> images, string familyName = null)
@@ -168,10 +232,10 @@ namespace ArchSmarterFamFab
             if (string.IsNullOrWhiteSpace(familyName)) return json;
             try
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
                 using var ms = new System.IO.MemoryStream();
-                using (var writer = new System.Text.Json.Utf8JsonWriter(ms, new System.Text.Json.JsonWriterOptions { Indented = true }))
+                using (var writer = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
                 {
                     writer.WriteStartObject();
                     foreach (var prop in root.EnumerateObject())
