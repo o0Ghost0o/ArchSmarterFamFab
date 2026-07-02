@@ -35,17 +35,6 @@ namespace ArchSmarterFamFab.Data
                 };
             }
 
-            // Validate dependencies before running
-            string depCheck = CheckDependencies(pythonExe);
-            if (!string.IsNullOrEmpty(depCheck))
-            {
-                return new TripoSRResult
-                {
-                    Success = false,
-                    ErrorMessage = $"TripoSR dependencies missing: {depCheck}. Please install requirements: pip install torch numpy pillow xatlas rembg scikit-image"
-                };
-            }
-
             Directory.CreateDirectory(outputDir);
 
             var psi = new ProcessStartInfo
@@ -68,10 +57,16 @@ namespace ArchSmarterFamFab.Data
 
                 if (process.ExitCode != 0)
                 {
+                    // Detect common dependency errors from stderr
+                    string errorMsg = stderr;
+                    if (stderr.Contains("ModuleNotFoundError") || stderr.Contains("No module named"))
+                    {
+                        errorMsg = $"TripoSR dependencies missing. Please run 'uv sync' in the project folder, or: pip install torch numpy pillow xatlas rembg scikit-image\n\nDetails: {stderr}";
+                    }
                     return new TripoSRResult
                     {
                         Success = false,
-                        ErrorMessage = $"TripoSR process exited with code {process.ExitCode}. Error: {stderr}"
+                        ErrorMessage = $"TripoSR process exited with code {process.ExitCode}. Error: {errorMsg}"
                     };
                 }
 
@@ -221,38 +216,6 @@ namespace ArchSmarterFamFab.Data
                 return sourcePath;
 
             return null;
-        }
-
-        private static string CheckDependencies(string pythonExe)
-        {
-            string[] requiredModules = { "numpy", "torch", "PIL", "xatlas", "rembg", "skimage" };
-            var missing = new List<string>();
-
-            foreach (var module in requiredModules)
-            {
-                try
-                {
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = pythonExe,
-                        Arguments = $"-c \"import {module}\"",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    };
-                    using var proc = Process.Start(psi);
-                    proc?.WaitForExit(30000);
-                    if (proc?.ExitCode != 0)
-                        missing.Add(module);
-                }
-                catch
-                {
-                    missing.Add(module);
-                }
-            }
-
-            return missing.Count > 0 ? string.Join(", ", missing) : null;
         }
     }
 }
