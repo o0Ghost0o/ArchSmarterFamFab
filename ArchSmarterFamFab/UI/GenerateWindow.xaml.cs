@@ -375,8 +375,10 @@ namespace ArchSmarterFamFab.UI
                     Path.GetTempPath(),
                     $"triposr_{DateTime.Now:yyyyMMdd_HHmmss}");
 
+                string familyName = TxtFamilyName.Text?.Trim();
+
                 var result = await Task.Run(() =>
-                    TripoSRClient.Run(_firstImagePath, outputDir, TxtFamilyName.Text?.Trim()));
+                    TripoSRClient.Run(_firstImagePath, outputDir, familyName));
 
                 if (!result.Success)
                 {
@@ -390,13 +392,13 @@ namespace ArchSmarterFamFab.UI
                 }
 
                 // Build a minimal family JSON for the mesh
-                string familyJson = BuildMeshFamilyJson(result, TxtFamilyName.Text?.Trim());
+                string familyJson = BuildMeshFamilyJson(result, familyName);
 
                 Dispatcher.Invoke(() =>
                 {
                     FamilyJson = familyJson;
                     SourceImages = _images.ToList();
-                    FamilyName = TxtFamilyName.Text?.Trim();
+                    FamilyName = familyName;
                     TripoSRMeshPath = result.MeshPath;
                     TripoSRTexturePath = result.TexturePath;
                     DialogResult = true;
