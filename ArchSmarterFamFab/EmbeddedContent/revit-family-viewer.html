@@ -409,6 +409,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
 <script>
 /* =========================================================================
    Expression Evaluator
@@ -712,6 +713,10 @@ class FamilyRenderer {
     }
     if (geom.type === 'blend') {
       return this._buildBlend(geom, plane, evaluator);
+    }
+    if (geom.type === 'mesh_import') {
+      // Mesh import is handled externally via loadMeshFromUrl; skip here
+      return null;
     }
     throw new Error('Unsupported geometry type: ' + geom.type);
   }
@@ -1342,7 +1347,9 @@ function clearError() {
 
 function renderHUD(family) {
   document.getElementById('hudUnits').textContent = family.units || 'n/a';
-  document.getElementById('hudElements').textContent = (family.geometry || []).length;
+  // For mesh_import mode, geometry array may be empty but mesh is loaded externally
+  const geomCount = (family.geometry || []).filter(g => g.type !== 'mesh_import').length;
+  document.getElementById('hudElements').textContent = geomCount;
 }
 
 function loadFamilyData(family) {

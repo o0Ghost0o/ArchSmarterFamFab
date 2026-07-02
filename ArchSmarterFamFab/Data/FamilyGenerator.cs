@@ -68,9 +68,9 @@ namespace ArchSmarterFamFab.Data
             foreach (var geom in root.GetProperty("geometry").EnumerateArray())
             {
                 string geomType = geom.GetProperty("type").GetString();
-                if (geomType != "extrusion" && geomType != "sweep" && geomType != "blend")
+                if (geomType != "extrusion" && geomType != "sweep" && geomType != "blend" && geomType != "mesh_import")
                 {
-                    result.ErrorMessage = $"Geometry type '{geomType}' is not supported. Only extrusions, sweeps, and blends are supported.";
+                    result.ErrorMessage = $"Geometry type '{geomType}' is not supported. Only extrusions, sweeps, blends, and mesh_import are supported.";
                     return result;
                 }
             }
@@ -263,34 +263,45 @@ namespace ArchSmarterFamFab.Data
                     {
                         string geomName = geom.GetProperty("name").GetString();
                         string geomType = geom.GetProperty("type").GetString();
-                        string sketchPlaneName = geom.GetProperty("sketch_plane").GetString();
-
-                        if (!refPlaneMap.ContainsKey(sketchPlaneName))
-                        {
-                            result.Errors.Add($"'{geomName}': sketch plane '{sketchPlaneName}' not found");
-                            continue;
-                        }
-
-                        ReferencePlane sketchRefPlane = refPlaneMap[sketchPlaneName];
-                        string planeDirection = GetPlaneDirection(sketchPlaneName, root);
 
                         bool created = false;
                         string error = null;
 
-                        if (geomType == "extrusion")
+                        if (geomType == "mesh_import")
                         {
-                            created = CreateExtrusion(doc, geom, sketchRefPlane, planeDirection,
-                                root, paramDefaults, sourceUnitType, subcategoryMap, out error);
+                            // Mesh import: no native Revit geometry created in family editor.
+                            // The mesh file is available for external import; we count it as created
+                            // so the texture material step can still apply.
+                            created = true;
                         }
-                        else if (geomType == "sweep")
+                        else
                         {
-                            created = CreateSweep(doc, app, geom, sketchRefPlane, planeDirection,
-                                root, paramDefaults, sourceUnitType, subcategoryMap, out error);
-                        }
-                        else if (geomType == "blend")
-                        {
-                            created = CreateBlend(doc, app, geom, sketchRefPlane, planeDirection,
-                                root, paramDefaults, sourceUnitType, subcategoryMap, out error);
+                            string sketchPlaneName = geom.GetProperty("sketch_plane").GetString();
+
+                            if (!refPlaneMap.ContainsKey(sketchPlaneName))
+                            {
+                                result.Errors.Add($"'{geomName}': sketch plane '{sketchPlaneName}' not found");
+                                continue;
+                            }
+
+                            ReferencePlane sketchRefPlane = refPlaneMap[sketchPlaneName];
+                            string planeDirection = GetPlaneDirection(sketchPlaneName, root);
+
+                            if (geomType == "extrusion")
+                            {
+                                created = CreateExtrusion(doc, geom, sketchRefPlane, planeDirection,
+                                    root, paramDefaults, sourceUnitType, subcategoryMap, out error);
+                            }
+                            else if (geomType == "sweep")
+                            {
+                                created = CreateSweep(doc, app, geom, sketchRefPlane, planeDirection,
+                                    root, paramDefaults, sourceUnitType, subcategoryMap, out error);
+                            }
+                            else if (geomType == "blend")
+                            {
+                                created = CreateBlend(doc, app, geom, sketchRefPlane, planeDirection,
+                                    root, paramDefaults, sourceUnitType, subcategoryMap, out error);
+                            }
                         }
 
                         if (created)
