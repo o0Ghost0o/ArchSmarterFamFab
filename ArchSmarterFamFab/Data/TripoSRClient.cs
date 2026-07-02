@@ -48,29 +48,34 @@ namespace ArchSmarterFamFab.Data
                 WorkingDirectory = Path.GetDirectoryName(scriptPath) ?? Directory.GetCurrentDirectory()
             };
 
-            // If uv is available and pyproject.toml exists next to triposr_cli.py, use uv run instead
-            string scriptDir = Path.GetDirectoryName(scriptPath);
-            if (!string.IsNullOrEmpty(scriptDir) && File.Exists(Path.Combine(scriptDir, "pyproject.toml")))
+            // If we found a venv python, use it directly. Only fall back to uv run if we found
+            // a bare python from PATH that might not have the deps.
+            if (!pythonExe.Contains(".venv"))
             {
-                try
+                // Try uv run as fallback for non-venv python
+                string scriptDir = Path.GetDirectoryName(scriptPath);
+                if (!string.IsNullOrEmpty(scriptDir) && File.Exists(Path.Combine(scriptDir, "pyproject.toml")))
                 {
-                    var uvTest = new ProcessStartInfo
+                    try
                     {
-                        FileName = "uv",
-                        Arguments = "--version",
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        RedirectStandardOutput = true
-                    };
-                    using var uvProc = Process.Start(uvTest);
-                    uvProc?.WaitForExit(5000);
-                    if (uvProc?.ExitCode == 0)
-                    {
-                        psi.FileName = "uv";
-                        psi.Arguments = $"run python \"{scriptPath}\" \"{imagePath}\" --output-dir \"{outputDir}\" --device cpu --bake-texture --model-save-format obj";
+                        var uvTest = new ProcessStartInfo
+                        {
+                            FileName = "uv",
+                            Arguments = "--version",
+                            UseShellExecute = false,
+                            CreateNoWindow = true,
+                            RedirectStandardOutput = true
+                        };
+                        using var uvProc = Process.Start(uvTest);
+                        uvProc?.WaitForExit(5000);
+                        if (uvProc?.ExitCode == 0)
+                        {
+                            psi.FileName = "uv";
+                            psi.Arguments = $"run python \"{scriptPath}\" \"{imagePath}\" --output-dir \"{outputDir}\" --device cpu --bake-texture --model-save-format obj";
+                        }
                     }
+                    catch { }
                 }
-                catch { }
             }
 
             try
