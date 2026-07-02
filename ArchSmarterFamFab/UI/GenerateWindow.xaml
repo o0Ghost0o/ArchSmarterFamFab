@@ -121,6 +121,12 @@
                     </Border>
                 </StackPanel>
 
+                <!-- No history hint (shown when empty) -->
+                <TextBlock Grid.Row="2" x:Name="NoHistoryHint" Visibility="Collapsed"
+                           Text="Recent generations will appear here after you create your first family."
+                           FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                           FontStyle="Italic" Margin="0,4,0,0"/>
+
                 <!-- Image File -->
                 <StackPanel Grid.Row="4">
                     <TextBlock Text="Image File(s)" Margin="0,0,0,6" FontWeight="SemiBold"/>

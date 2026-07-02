@@ -49,10 +49,14 @@ namespace ArchSmarterFamFab.UI
             if (entries.Count == 0)
             {
                 HistoryPanel.Visibility = System.Windows.Visibility.Collapsed;
+                if (NoHistoryHint != null)
+                    NoHistoryHint.Visibility = System.Windows.Visibility.Visible;
                 return;
             }
 
             HistoryPanel.Visibility = System.Windows.Visibility.Visible;
+            if (NoHistoryHint != null)
+                NoHistoryHint.Visibility = System.Windows.Visibility.Collapsed;
 
             foreach (var entry in entries)
             {

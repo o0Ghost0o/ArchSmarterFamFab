@@ -41,6 +41,11 @@ namespace ArchSmarterFamFab
             SaveJson(familyJson, "api-response", familyName);
             string sourceImagePath = SaveSourceImages(generateWindow.SourceImages, familyName);
 
+            // Save to history immediately after generation (before preview), so user can reopen even if they cancel preview
+            SaveToHistory(familyName, sourceImagePath, generateWindow.TripoSRMeshPath,
+                generateWindow.TripoSRTexturePath, familyJson, generateWindow.IsTripoSRMode,
+                new GenerationResult { Success = true });
+
             var previewWindow = new PreviewWindow(familyJson, settingsManager.GetProvider(), apiKey, settingsManager.GetModelName(),
                 generateWindow.SourceImages, sourceImagePath, familyName,
                 generateWindow.TripoSRMeshPath, generateWindow.TripoSRTexturePath, generateWindow.IsTripoSRMode);
@@ -61,7 +66,7 @@ namespace ArchSmarterFamFab
 
                 if (genResult.Success)
                 {
-                    // Save to history after successful generation
+                    // Update history with final JSON after successful Revit generation
                     SaveToHistory(familyName, sourceImagePath, generateWindow.TripoSRMeshPath,
                         generateWindow.TripoSRTexturePath, finalJson, generateWindow.IsTripoSRMode,
                         genResult);
