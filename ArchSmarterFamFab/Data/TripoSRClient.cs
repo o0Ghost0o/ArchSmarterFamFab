@@ -48,6 +48,31 @@ namespace ArchSmarterFamFab.Data
                 WorkingDirectory = Path.GetDirectoryName(scriptPath) ?? Directory.GetCurrentDirectory()
             };
 
+            // If uv is available and pyproject.toml exists next to triposr_cli.py, use uv run instead
+            string scriptDir = Path.GetDirectoryName(scriptPath);
+            if (!string.IsNullOrEmpty(scriptDir) && File.Exists(Path.Combine(scriptDir, "pyproject.toml")))
+            {
+                try
+                {
+                    var uvTest = new ProcessStartInfo
+                    {
+                        FileName = "uv",
+                        Arguments = "--version",
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardOutput = true
+                    };
+                    using var uvProc = Process.Start(uvTest);
+                    uvProc?.WaitForExit(5000);
+                    if (uvProc?.ExitCode == 0)
+                    {
+                        psi.FileName = "uv";
+                        psi.Arguments = $"run python \"{scriptPath}\" \"{imagePath}\" --output-dir \"{outputDir}\" --device cpu --bake-texture --model-save-format obj";
+                    }
+                }
+                catch { }
+            }
+
             try
             {
                 using var process = Process.Start(psi);
@@ -119,26 +144,33 @@ namespace ArchSmarterFamFab.Data
 
         private static string FindPythonExecutable()
         {
-            // 1. Check for .venv in project directory
-            string projectVenv = Path.Combine(
-                Path.GetDirectoryName(typeof(TripoSRClient).Assembly.Location) ?? Directory.GetCurrentDirectory(),
-                ".venv", "Scripts", "python.exe");
-            if (File.Exists(projectVenv))
-                return projectVenv;
-
-            // 2. Check for .venv in Documents/ArchSmarterFamFab
+            // 1. Check for .venv in Documents/ArchSmarterFamFab (user's working venv)
             string docsVenv = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 "ArchSmarterFamFab", ".venv", "Scripts", "python.exe");
             if (File.Exists(docsVenv))
                 return docsVenv;
 
-            // 3. Check for uv-managed python
-            string uvPython = FindUvPython();
-            if (!string.IsNullOrEmpty(uvPython))
-                return uvPython;
+            // 2. Check for .venv in deployed add-in directory (may be empty/stale)
+            string projectVenv = Path.Combine(
+                Path.GetDirectoryName(typeof(TripoSRClient).Assembly.Location) ?? Directory.GetCurrentDirectory(),
+                ".venv", "Scripts", "python.exe");
+            if (File.Exists(projectVenv))
+                return projectVenv;
 
-            // 4. Check PATH for python
+            // 3. Check for uv-managed python in Documents project
+            string docsUvPython = FindUvPythonInFolder(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "ArchSmarterFamFab"));
+            if (!string.IsNullOrEmpty(docsUvPython))
+                return docsUvPython;
+
+            // 4. Check for uv-managed python in deployed folder
+            string deployedUvPython = FindUvPythonInFolder(
+                Path.GetDirectoryName(typeof(TripoSRClient).Assembly.Location) ?? Directory.GetCurrentDirectory());
+            if (!string.IsNullOrEmpty(deployedUvPython))
+                return deployedUvPython;
+
+            // 5. Check PATH for python
             string[] candidates = { "python.exe", "python3.exe", "py.exe" };
             foreach (var candidate in candidates)
             {
@@ -163,14 +195,23 @@ namespace ArchSmarterFamFab.Data
             return null;
         }
 
-        private static string FindUvPython()
+        private static string FindUvPythonInFolder(string folderPath)
         {
+            if (!Directory.Exists(folderPath))
+                return null;
+
+            string uvPath = Path.Combine(folderPath, ".venv", "Scripts", "python.exe");
+            if (File.Exists(uvPath))
+                return uvPath;
+
+            // Try uv run --python to get the managed python
             try
             {
                 var psi = new ProcessStartInfo
                 {
                     FileName = "uv",
                     Arguments = "python find",
+                    WorkingDirectory = folderPath,
                     RedirectStandardOutput = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
@@ -189,6 +230,7 @@ namespace ArchSmarterFamFab.Data
                 }
             }
             catch { }
+
             return null;
         }
 
