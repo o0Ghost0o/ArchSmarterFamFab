@@ -301,43 +301,55 @@ namespace ArchSmarterFamFab.UI
                 string json = await Task.Run(() =>
                     client.GenerateFamilyFromImagesAsync(images, skillPrompt, schema, userContext));
 
-                SetGenerating(true, "Validating response...");
-
-                using JsonDocument testParse = JsonDocument.Parse(json);
-                if (!testParse.RootElement.TryGetProperty("metadata", out _) ||
-                    !testParse.RootElement.TryGetProperty("geometry", out _))
+                Dispatcher.Invoke(() =>
                 {
-                    System.Windows.MessageBox.Show(
-                        "API returned JSON but it doesn't match the family schema.",
-                        "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-                    SetGenerating(false);
-                    return;
-                }
+                    SetGenerating(true, "Validating response...");
 
-                FamilyJson = json;
-                SourceImages = images;
-                UserContext = userContext;
-                FamilyName = TxtFamilyName.Text?.Trim();
-                DialogResult = true;
+                    using JsonDocument testParse = JsonDocument.Parse(json);
+                    if (!testParse.RootElement.TryGetProperty("metadata", out _) ||
+                        !testParse.RootElement.TryGetProperty("geometry", out _))
+                    {
+                        System.Windows.MessageBox.Show(
+                            "API returned JSON but it doesn't match the family schema.",
+                            "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                        SetGenerating(false);
+                        return;
+                    }
+
+                    FamilyJson = json;
+                    SourceImages = images;
+                    UserContext = userContext;
+                    FamilyName = TxtFamilyName.Text?.Trim();
+                    DialogResult = true;
+                });
             }
             catch (LlmException ex)
             {
-                Debug.WriteLine($"Response: {ex.ResponseJson}");
-                System.Windows.MessageBox.Show($"Model API error: {ex.Message}{ex.Detail}",
-                    "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-                SetGenerating(false);
+                Dispatcher.Invoke(() =>
+                {
+                    Debug.WriteLine($"Response: {ex.ResponseJson}");
+                    System.Windows.MessageBox.Show($"Model API error: {ex.Message}{ex.Detail}",
+                        "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    SetGenerating(false);
+                });
             }
             catch (JsonException ex)
             {
-                System.Windows.MessageBox.Show($"Invalid JSON in API response: {ex.Message}",
-                    "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-                SetGenerating(false);
+                Dispatcher.Invoke(() =>
+                {
+                    System.Windows.MessageBox.Show($"Invalid JSON in API response: {ex.Message}",
+                        "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    SetGenerating(false);
+                });
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"Error: {ex.Message}",
-                    "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-                SetGenerating(false);
+                Dispatcher.Invoke(() =>
+                {
+                    System.Windows.MessageBox.Show($"Error: {ex.Message}",
+                        "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    SetGenerating(false);
+                });
             }
         }
 
@@ -364,28 +376,36 @@ namespace ArchSmarterFamFab.UI
 
                 if (!result.Success)
                 {
-                    System.Windows.MessageBox.Show($"TripoSR failed: {result.ErrorMessage}",
-                        "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-                    SetGenerating(false);
+                    Dispatcher.Invoke(() =>
+                    {
+                        System.Windows.MessageBox.Show($"TripoSR failed: {result.ErrorMessage}",
+                            "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                        SetGenerating(false);
+                    });
                     return;
                 }
 
                 // Build a minimal family JSON for the mesh
                 string familyJson = BuildMeshFamilyJson(result, TxtFamilyName.Text?.Trim());
 
-                FamilyJson = familyJson;
-                SourceImages = _images.ToList();
-                FamilyName = TxtFamilyName.Text?.Trim();
-                TripoSRMeshPath = result.MeshPath;
-                TripoSRTexturePath = result.TexturePath;
-
-                DialogResult = true;
+                Dispatcher.Invoke(() =>
+                {
+                    FamilyJson = familyJson;
+                    SourceImages = _images.ToList();
+                    FamilyName = TxtFamilyName.Text?.Trim();
+                    TripoSRMeshPath = result.MeshPath;
+                    TripoSRTexturePath = result.TexturePath;
+                    DialogResult = true;
+                });
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"TripoSR error: {ex.Message}",
-                    "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-                SetGenerating(false);
+                Dispatcher.Invoke(() =>
+                {
+                    System.Windows.MessageBox.Show($"TripoSR error: {ex.Message}",
+                        "FamFab - Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    SetGenerating(false);
+                });
             }
         }
 
