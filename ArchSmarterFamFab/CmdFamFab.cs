@@ -7,6 +7,8 @@ namespace ArchSmarterFamFab
     [Transaction(TransactionMode.Manual)]
     public class CmdFamFab : IExternalCommand
     {
+        private static bool _tripoSRDependenciesChecked;
+
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
             UIApplication uiapp = commandData.Application;
@@ -28,6 +30,28 @@ namespace ArchSmarterFamFab
                 TaskDialog.Show("FamFab",
                     $"Please configure your {providerName} API key first.\n\nClick the FamFab Settings button to enter your key.");
                 return Result.Failed;
+            }
+
+            if (!_tripoSRDependenciesChecked)
+            {
+                var env = TripoSRDependencyInstaller.FindEnvironment();
+                if (!TripoSRDependencyInstaller.IsInstalled(env.PythonExe))
+                {
+                    if (!env.IsUvManaged && string.IsNullOrEmpty(env.PythonExe))
+                    {
+                        TaskDialog.Show("FamFab - TripoSR",
+                            "TripoSR requires Python 3.11+ or the uv package manager, but neither was found on this machine.\n\n" +
+                            "Please install uv (https://docs.astral.sh/uv/) or Python 3.11+, then restart Revit.");
+                        _tripoSRDependenciesChecked = true;
+                        return Result.Failed;
+                    }
+
+                    var installer = new InstallerWindow(env);
+                    new WindowInteropHelper(installer).Owner = uiapp.MainWindowHandle;
+                    if (installer.ShowDialog() != true)
+                        return Result.Cancelled;
+                }
+                _tripoSRDependenciesChecked = true;
             }
 
             var generateWindow = new GenerateWindow(apiKey, settingsManager);

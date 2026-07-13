@@ -2,25 +2,29 @@
 name = "famfab-triposr"
 version = "0.1.0"
 description = "TripoSR integration for ArchSmarter FamFab"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 
 dependencies = [
     "torch>=2.0.0",
-    "numpy>=1.24.0",
-    "pillow>=10.0.0",
+    "numpy>=2.0.0",
+    "pillow>=11.0.0",
     "xatlas>=0.0.11",
     "rembg[cpu]>=2.0.50",
-    "scikit-image>=0.21.0",
+    "scikit-image>=0.25.0",
     "trimesh>=4.0.0",
-    "einops>=0.7.0",
-    "huggingface-hub>=0.17.0",
-    "transformers==4.35.0",
-    "safetensors>=0.4.0",
+    "einops>=0.8.0",
+    "huggingface-hub>=0.27.0",
+    "transformers>=4.47.0",
+    "safetensors>=0.5.0",
     "omegaconf>=2.3.0",
     "moderngl>=5.10.0",
-    "gradio>=3.36.0",
+    "gradio>=5.0.0",
+    "torchmcubes @ git+https://github.com/tatsy/torchmcubes.git",
 ]
 
 [tool.uv]
-# Use CPU-only torch by default (faster install, works on most machines)
-# Override with `uv pip install torch --index-url ...` for CUDA if needed
+# Target CUDA 12.6 (forward-compatible with CUDA 13.x drivers).
+# If the target machine has an older driver, switch to:
+#   https://download.pytorch.org/whl/cu124  (CUDA 12.4)
+#   https://download.pytorch.org/whl/cu118  (CUDA 11.8)
+index-url = "https://download.pytorch.org/whl/cu126"

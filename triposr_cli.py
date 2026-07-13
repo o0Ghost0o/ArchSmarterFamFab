@@ -23,7 +23,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("image", type=str, help="Path to input image.")
     parser.add_argument("--output-dir", default="output", type=str)
-    parser.add_argument("--device", default="cpu", type=str)
+    parser.add_argument("--device", default="auto", type=str,
+                        help="Device to run inference on. 'auto' picks CUDA if available, otherwise CPU.")
     parser.add_argument("--pretrained-model", default="stabilityai/TripoSR", type=str)
     parser.add_argument("--chunk-size", default=8192, type=int)
     parser.add_argument("--mc-resolution", default=256, type=int)
@@ -37,7 +38,9 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
 
     device = args.device
-    if device.startswith("cuda") and not torch.cuda.is_available():
+    if device == "auto":
+        device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    elif device.startswith("cuda") and not torch.cuda.is_available():
         device = "cpu"
         logging.warning("CUDA not available, falling back to CPU")
 

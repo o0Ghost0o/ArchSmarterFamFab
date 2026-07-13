@@ -15,13 +15,15 @@ namespace ArchSmarterFamFab.Data
     {
         public static TripoSRResult Run(string imagePath, string outputDir, string familyName = null)
         {
-            string pythonExe = FindPythonExecutable();
+            var env = TripoSRDependencyInstaller.FindEnvironment();
+
+            string pythonExe = env.PythonExe;
             if (string.IsNullOrEmpty(pythonExe))
             {
                 return new TripoSRResult
                 {
                     Success = false,
-                    ErrorMessage = "Python not found. Please install Python 3.11+ and uv, then run 'uv sync' in the project folder."
+                    ErrorMessage = "Python not found. Please install Python 3.11+ and restart Revit."
                 };
             }
 
@@ -40,7 +42,7 @@ namespace ArchSmarterFamFab.Data
             var psi = new ProcessStartInfo
             {
                 FileName = pythonExe,
-                Arguments = $"\"{scriptPath}\" \"{imagePath}\" --output-dir \"{outputDir}\" --device cpu --bake-texture --model-save-format obj",
+                Arguments = $"\"{scriptPath}\" \"{imagePath}\" --output-dir \"{outputDir}\" --device auto --bake-texture --model-save-format obj",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -48,33 +50,15 @@ namespace ArchSmarterFamFab.Data
                 WorkingDirectory = Path.GetDirectoryName(scriptPath) ?? Directory.GetCurrentDirectory()
             };
 
-            // If we found a venv python, use it directly. Only fall back to uv run if we found
-            // a bare python from PATH that might not have the deps.
-            if (!pythonExe.Contains(".venv"))
+            // If we are not using a venv python, try to use uv run so the project dependencies are available.
+            if (!pythonExe.Contains(".venv") && !string.IsNullOrEmpty(env.UvExe))
             {
-                // Try uv run as fallback for non-venv python
                 string scriptDir = Path.GetDirectoryName(scriptPath);
                 if (!string.IsNullOrEmpty(scriptDir) && File.Exists(Path.Combine(scriptDir, "pyproject.toml")))
                 {
-                    try
-                    {
-                        var uvTest = new ProcessStartInfo
-                        {
-                            FileName = "uv",
-                            Arguments = "--version",
-                            UseShellExecute = false,
-                            CreateNoWindow = true,
-                            RedirectStandardOutput = true
-                        };
-                        using var uvProc = Process.Start(uvTest);
-                        uvProc?.WaitForExit(5000);
-                        if (uvProc?.ExitCode == 0)
-                        {
-                            psi.FileName = "uv";
-                            psi.Arguments = $"run python \"{scriptPath}\" \"{imagePath}\" --output-dir \"{outputDir}\" --device cpu --bake-texture --model-save-format obj";
-                        }
-                    }
-                    catch { }
+                    psi.FileName = env.UvExe;
+                    psi.Arguments = $"run python \"{scriptPath}\" \"{imagePath}\" --output-dir \"{outputDir}\" --device auto --bake-texture --model-save-format obj";
+                    psi.WorkingDirectory = scriptDir;
                 }
             }
 
@@ -87,11 +71,10 @@ namespace ArchSmarterFamFab.Data
 
                 if (process.ExitCode != 0)
                 {
-                    // Detect common dependency errors from stderr
                     string errorMsg = stderr;
                     if (stderr.Contains("ModuleNotFoundError") || stderr.Contains("No module named"))
                     {
-                        errorMsg = $"TripoSR dependencies missing. Please run 'uv sync' in the project folder, or: pip install torch numpy pillow xatlas rembg scikit-image\n\nDetails: {stderr}";
+                        errorMsg = $"TripoSR dependencies are missing. Please restart the FamFab command to install them.\n\nDetails: {stderr}";
                     }
                     return new TripoSRResult
                     {
@@ -104,7 +87,6 @@ namespace ArchSmarterFamFab.Data
                 string resultJsonPath = stdout.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
                 if (string.IsNullOrEmpty(resultJsonPath) || !File.Exists(resultJsonPath))
                 {
-                    // Fallback: look for result.json in output dir
                     resultJsonPath = Path.Combine(outputDir, "result.json");
                 }
 
@@ -147,106 +129,22 @@ namespace ArchSmarterFamFab.Data
             }
         }
 
-        private static string FindPythonExecutable()
-        {
-            // 1. Check for .venv in Documents/ArchSmarterFamFab (user's working venv)
-            string docsVenv = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-                "ArchSmarterFamFab", ".venv", "Scripts", "python.exe");
-            if (File.Exists(docsVenv))
-                return docsVenv;
-
-            // 2. Check for .venv in deployed add-in directory (may be empty/stale)
-            string projectVenv = Path.Combine(
-                Path.GetDirectoryName(typeof(TripoSRClient).Assembly.Location) ?? Directory.GetCurrentDirectory(),
-                ".venv", "Scripts", "python.exe");
-            if (File.Exists(projectVenv))
-                return projectVenv;
-
-            // 3. Check for uv-managed python in Documents project
-            string docsUvPython = FindUvPythonInFolder(
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "ArchSmarterFamFab"));
-            if (!string.IsNullOrEmpty(docsUvPython))
-                return docsUvPython;
-
-            // 4. Check for uv-managed python in deployed folder
-            string deployedUvPython = FindUvPythonInFolder(
-                Path.GetDirectoryName(typeof(TripoSRClient).Assembly.Location) ?? Directory.GetCurrentDirectory());
-            if (!string.IsNullOrEmpty(deployedUvPython))
-                return deployedUvPython;
-
-            // 5. Check PATH for python
-            string[] candidates = { "python.exe", "python3.exe", "py.exe" };
-            foreach (var candidate in candidates)
-            {
-                try
-                {
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = candidate,
-                        Arguments = "--version",
-                        RedirectStandardOutput = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    };
-                    using var proc = Process.Start(psi);
-                    proc?.WaitForExit(5000);
-                    if (proc?.ExitCode == 0)
-                        return candidate;
-                }
-                catch { }
-            }
-
-            return null;
-        }
-
-        private static string FindUvPythonInFolder(string folderPath)
-        {
-            if (!Directory.Exists(folderPath))
-                return null;
-
-            string uvPath = Path.Combine(folderPath, ".venv", "Scripts", "python.exe");
-            if (File.Exists(uvPath))
-                return uvPath;
-
-            // Try uv run --python to get the managed python
-            try
-            {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "uv",
-                    Arguments = "python find",
-                    WorkingDirectory = folderPath,
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                using var proc = Process.Start(psi);
-                if (proc != null)
-                {
-                    string output = proc.StandardOutput.ReadToEnd();
-                    proc.WaitForExit(10000);
-                    if (proc.ExitCode == 0)
-                    {
-                        string path = output.Trim();
-                        if (File.Exists(path))
-                            return path;
-                    }
-                }
-            }
-            catch { }
-
-            return null;
-        }
-
         private static string FindTriposrCliPath()
         {
             string assemblyDir = Path.GetDirectoryName(typeof(TripoSRClient).Assembly.Location);
-            if (!string.IsNullOrEmpty(assemblyDir))
+
+            // Walk up from the assembly location looking for triposr_cli.py.
+            string current = assemblyDir;
+            for (int i = 0; i < 5 && !string.IsNullOrEmpty(current); i++)
             {
-                string path = Path.Combine(assemblyDir, "triposr_cli.py");
+                string path = Path.Combine(current, "triposr_cli.py");
                 if (File.Exists(path))
                     return path;
+
+                string parent = Path.GetDirectoryName(current);
+                if (parent == current)
+                    break;
+                current = parent;
             }
 
             string docsPath = Path.Combine(
@@ -254,13 +152,6 @@ namespace ArchSmarterFamFab.Data
                 "ArchSmarterFamFab", "triposr_cli.py");
             if (File.Exists(docsPath))
                 return docsPath;
-
-            // Check if running from project source
-            string sourcePath = Path.Combine(
-                Path.GetDirectoryName(assemblyDir) ?? "",
-                "triposr_cli.py");
-            if (File.Exists(sourcePath))
-                return sourcePath;
 
             return null;
         }

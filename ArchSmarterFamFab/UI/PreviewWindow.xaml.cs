@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using Microsoft.Web.WebView2.Core;
@@ -197,209 +198,150 @@ namespace ArchSmarterFamFab.UI
 
         private async void LoadMeshIntoViewer()
         {
-            if (!_webViewReady || string.IsNullOrEmpty(_meshPath)) return;
+            if (!_webViewReady || string.IsNullOrEmpty(_meshPath) || !File.Exists(_meshPath)) return;
 
             try
             {
-                // Copy mesh to a temp location and set up virtual host mapping
-                string tempDir = Path.Combine(Path.GetTempPath(), "famfab_mesh_viewer");
-                Directory.CreateDirectory(tempDir);
-                string tempMesh = Path.Combine(tempDir, "mesh.obj");
-                File.Copy(_meshPath, tempMesh, true);
+                // Read mesh locally and embed as base64 to avoid WebView2 virtual-host/fetch issues
+                string objText = File.ReadAllText(_meshPath, Encoding.UTF8);
+                string objBase64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(objText));
 
-                string tempTexture = null;
+                string textureDataUrl = "";
                 if (!string.IsNullOrEmpty(_texturePath) && File.Exists(_texturePath))
                 {
-                    tempTexture = Path.Combine(tempDir, "texture.png");
-                    File.Copy(_texturePath, tempTexture, true);
+                    byte[] textureBytes = File.ReadAllBytes(_texturePath);
+                    textureDataUrl = $"data:image/png;base64,{Convert.ToBase64String(textureBytes)}";
                 }
 
-                // Use virtual host mapping instead of file:// URLs (more reliable in WebView2)
-                WebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    "famfab.mesh", tempDir, CoreWebView2HostResourceAccessKind.Allow);
-
-                string meshUrl = "https://famfab.mesh/mesh.obj";
-                string textureUrl = tempTexture != null ? "https://famfab.mesh/texture.png" : "";
-
-                // First test if the virtual host mapping works, then load mesh
                 string script = $@"
 try {{
-    async function loadMesh() {{
-        console.log('Testing mesh URL: {meshUrl}');
-        
-        // Step 1: Test if file is accessible
-        try {{
-            const resp = await fetch('{meshUrl}');
-            if (!resp.ok) {{
-                throw new Error('HTTP ' + resp.status);
-            }}
-            const text = await resp.text();
-            console.log('OBJ file fetched, length:', text.length);
-            
-            // Step 2: Try THREE.OBJLoader if available
-            if (typeof THREE !== 'undefined' && typeof THREE.OBJLoader !== 'undefined') {{
-                console.log('Using THREE.OBJLoader');
-                var loader = new THREE.OBJLoader();
-                loader.load('{meshUrl}', function(object) {{
-                    console.log('OBJLoader success, children:', object.children.length);
-                    addMeshToScene(object);
-                }}, undefined, function(err) {{
-                    console.warn('OBJLoader failed, falling back to manual parser:', err);
-                    parseAndDisplayOBJ(text);
-                }});
-            }} else {{
-                console.log('OBJLoader not available, using manual parser');
-                parseAndDisplayOBJ(text);
-            }}
-        }} catch(fetchErr) {{
-            console.error('Fetch failed:', fetchErr);
-            document.getElementById('errorBanner').textContent = 'Cannot access mesh file: ' + fetchErr.message;
-            document.getElementById('errorBanner').classList.add('show');
+    (function() {{
+        var objBase64 = '{objBase64}';
+        var textureDataUrl = '{textureDataUrl}';
+
+        function decodeBase64Obj(b64) {{
+            var bytes = Uint8Array.from(atob(b64), function(c) {{ return c.charCodeAt(0); }});
+            return new TextDecoder().decode(bytes);
         }}
-    }}
-    
-    function addMeshToScene(object) {{
-        object.traverse(function(child) {{
-            if (child.isMesh) {{
-                child.material = new THREE.MeshStandardMaterial({{
-                    color: 0xb8c3d0,
-                    roughness: 0.55,
-                    metalness: 0.05
-                }});
-                {(tempTexture != null ? $@"
+
+        function parseAndDisplayOBJ(text) {{
+            var lines = text.split(/\r?\n/);
+            var vertices = [];
+            var uvs = [];
+            var normals = [];
+            var faces = [];
+
+            for (var i = 0; i < lines.length; i++) {{
+                var line = lines[i].trim();
+                if (line.length === 0 || line.charAt(0) === '#') continue;
+                var parts = line.split(/\s+/);
+                if (parts[0] === 'v') {{
+                    vertices.push(new THREE.Vector3(parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])));
+                }} else if (parts[0] === 'vt') {{
+                    uvs.push(new THREE.Vector2(parseFloat(parts[1]), parseFloat(parts[2])));
+                }} else if (parts[0] === 'vn') {{
+                    normals.push(new THREE.Vector3(parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])));
+                }} else if (parts[0] === 'f') {{
+                    var face = [];
+                    for (var j = 1; j < parts.length; j++) {{
+                        var indices = parts[j].split('/');
+                        face.push({{
+                            v: parseInt(indices[0]) - 1,
+                            vt: indices.length > 1 && indices[1] ? parseInt(indices[1]) - 1 : -1,
+                            vn: indices.length > 2 && indices[2] ? parseInt(indices[2]) - 1 : -1
+                        }});
+                    }}
+                    faces.push(face);
+                }}
+            }}
+
+            console.log('Manual parse: ' + vertices.length + ' verts, ' + faces.length + ' faces');
+
+            if (vertices.length === 0 || faces.length === 0) {{
+                document.getElementById('errorBanner').textContent = 'OBJ file has no geometry';
+                document.getElementById('errorBanner').classList.add('show');
+                return;
+            }}
+
+            var positions = [];
+            var normalsArr = [];
+            var uvsArr = [];
+
+            for (var fi = 0; fi < faces.length; fi++) {{
+                var face = faces[fi];
+                for (var ti = 1; ti < face.length - 1; ti++) {{
+                    var tri = [face[0], face[ti], face[ti + 1]];
+                    for (var vi = 0; vi < 3; vi++) {{
+                        var idx = tri[vi].v;
+                        var v = vertices[idx];
+                        positions.push(v.x, v.y, v.z);
+
+                        if (tri[vi].vn >= 0 && normals[tri[vi].vn]) {{
+                            var n = normals[tri[vi].vn];
+                            normalsArr.push(n.x, n.y, n.z);
+                        }} else {{
+                            normalsArr.push(0, 0, 1);
+                        }}
+
+                        if (tri[vi].vt >= 0 && uvs[tri[vi].vt]) {{
+                            var uv = uvs[tri[vi].vt];
+                            uvsArr.push(uv.x, uv.y);
+                        }} else {{
+                            uvsArr.push(0, 0);
+                        }}
+                    }}
+                }}
+            }}
+
+            var geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            if (normalsArr.length > 0) geo.setAttribute('normal', new THREE.Float32BufferAttribute(normalsArr, 3));
+            if (uvsArr.length > 0) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvsArr, 2));
+            geo.computeVertexNormals();
+
+            var mat = new THREE.MeshStandardMaterial({{
+                color: 0xb8c3d0,
+                roughness: 0.55,
+                metalness: 0.05
+            }});
+
+            {(textureDataUrl != "" ? $@"
+            if (textureDataUrl) {{
                 var texLoader = new THREE.TextureLoader();
-                texLoader.load('{textureUrl}', function(texture) {{
-                    child.material.map = texture;
-                    child.material.needsUpdate = true;
+                texLoader.load(textureDataUrl, function(texture) {{
+                    mat.map = texture;
+                    mat.needsUpdate = true;
                 }}, undefined, function(err) {{
                     console.warn('Texture load failed:', err);
-                }});" : "")}
-            }}
-        }});
-        scene.add(object);
-        var box = new THREE.Box3().setFromObject(object);
-        var center = new THREE.Vector3();
-        box.getCenter(center);
-        var size = new THREE.Vector3();
-        box.getSize(size);
-        var maxDim = Math.max(size.x, size.y, size.z);
-        target.copy(center);
-        sphericalRadius = maxDim * 2.5;
-        updateCameraFromSpherical();
-        document.getElementById('hudElements').textContent = object.children.length;
-        console.log('Mesh centered, size:', maxDim);
-    }}
-    
-    function parseAndDisplayOBJ(text) {{
-        // Minimal OBJ parser
-        var lines = text.split(/\r?\n/);
-        var vertices = [];
-        var uvs = [];
-        var normals = [];
-        var faces = [];
-        
-        for (var i = 0; i < lines.length; i++) {{
-            var line = lines[i].trim();
-            if (line.length === 0 || line.charAt(0) === '#') continue;
-            var parts = line.split(/\s+/);
-            if (parts[0] === 'v') {{
-                vertices.push(new THREE.Vector3(parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])));
-            }} else if (parts[0] === 'vt') {{
-                uvs.push(new THREE.Vector2(parseFloat(parts[1]), parseFloat(parts[2])));
-            }} else if (parts[0] === 'vn') {{
-                normals.push(new THREE.Vector3(parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])));
-            }} else if (parts[0] === 'f') {{
-                var face = [];
-                for (var j = 1; j < parts.length; j++) {{
-                    var indices = parts[j].split('/');
-                    face.push({{
-                        v: parseInt(indices[0]) - 1,
-                        vt: indices.length > 1 && indices[1] ? parseInt(indices[1]) - 1 : -1,
-                        vn: indices.length > 2 && indices[2] ? parseInt(indices[2]) - 1 : -1
-                    }});
-                }}
-                faces.push(face);
-            }}
+                }});
+            }}" : "")}
+
+            var mesh = new THREE.Mesh(geo, mat);
+            scene.add(mesh);
+
+            var box = new THREE.Box3().setFromObject(mesh);
+            var center = new THREE.Vector3();
+            box.getCenter(center);
+            var size = new THREE.Vector3();
+            box.getSize(size);
+            var maxDim = Math.max(size.x, size.y, size.z);
+            target.copy(center);
+            sphericalRadius = maxDim * 2.5;
+            updateCameraFromSpherical();
+            document.getElementById('hudElements').textContent = '1';
+            console.log('Manual mesh centered, size:', maxDim);
         }}
-        
-        console.log('Manual parse: ' + vertices.length + ' verts, ' + faces.length + ' faces');
-        
-        if (vertices.length === 0 || faces.length === 0) {{
-            document.getElementById('errorBanner').textContent = 'OBJ file has no geometry';
+
+        try {{
+            var text = decodeBase64Obj(objBase64);
+            console.log('OBJ decoded, length:', text.length);
+            parseAndDisplayOBJ(text);
+        }} catch (e) {{
+            console.error('Mesh decode failed:', e);
+            document.getElementById('errorBanner').textContent = 'Cannot decode mesh file: ' + e.message;
             document.getElementById('errorBanner').classList.add('show');
-            return;
         }}
-        
-        // Triangulate and build geometry
-        var positions = [];
-        var normalsArr = [];
-        var uvsArr = [];
-        
-        for (var fi = 0; fi < faces.length; fi++) {{
-            var face = faces[fi];
-            // Simple fan triangulation for convex polygons
-            for (var ti = 1; ti < face.length - 1; ti++) {{
-                var tri = [face[0], face[ti], face[ti + 1]];
-                for (var vi = 0; vi < 3; vi++) {{
-                    var idx = tri[vi].v;
-                    var v = vertices[idx];
-                    positions.push(v.x, v.y, v.z);
-                    
-                    if (tri[vi].vn >= 0 && normals[tri[vi].vn]) {{
-                        var n = normals[tri[vi].vn];
-                        normalsArr.push(n.x, n.y, n.z);
-                    }} else {{
-                        normalsArr.push(0, 0, 1);
-                    }}
-                    
-                    if (tri[vi].vt >= 0 && uvs[tri[vi].vt]) {{
-                        var uv = uvs[tri[vi].vt];
-                        uvsArr.push(uv.x, uv.y);
-                    }} else {{
-                        uvsArr.push(0, 0);
-                    }}
-                }}
-            }}
-        }}
-        
-        var geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        if (normalsArr.length > 0) geo.setAttribute('normal', new THREE.Float32BufferAttribute(normalsArr, 3));
-        if (uvsArr.length > 0) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvsArr, 2));
-        geo.computeVertexNormals();
-        
-        var mat = new THREE.MeshStandardMaterial({{
-            color: 0xb8c3d0,
-            roughness: 0.55,
-            metalness: 0.05
-        }});
-        
-        {(tempTexture != null ? $@"
-        var texLoader = new THREE.TextureLoader();
-        texLoader.load('{textureUrl}', function(texture) {{
-            mat.map = texture;
-            mat.needsUpdate = true;
-        }}, undefined, function(err) {{
-            console.warn('Texture load failed:', err);
-        }});" : "")}
-        
-        var mesh = new THREE.Mesh(geo, mat);
-        scene.add(mesh);
-        
-        var box = new THREE.Box3().setFromObject(mesh);
-        var center = new THREE.Vector3();
-        box.getCenter(center);
-        var size = new THREE.Vector3();
-        box.getSize(size);
-        var maxDim = Math.max(size.x, size.y, size.z);
-        target.copy(center);
-        sphericalRadius = maxDim * 2.5;
-        updateCameraFromSpherical();
-        document.getElementById('hudElements').textContent = '1';
-        console.log('Manual mesh centered, size:', maxDim);
-    }}
-    
-    loadMesh();
+    }})();
 }} catch(e) {{
     console.error('Mesh load script error:', e);
     document.getElementById('errorBanner').textContent = 'Mesh load error: ' + e.message;
