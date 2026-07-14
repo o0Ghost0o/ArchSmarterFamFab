@@ -23,10 +23,13 @@ namespace ArchSmarterFamFab.UI
 
             if (!string.IsNullOrEmpty(environment.UvExe))
                 AppendLog($"Installer: uv found at {environment.UvExe}");
-            else if (!string.IsNullOrEmpty(environment.PythonExe))
+            else
+                AppendLog("Installer: uv will be downloaded automatically.");
+
+            if (!string.IsNullOrEmpty(environment.PythonExe))
                 AppendLog($"Installer: Python found at {environment.PythonExe}");
             else
-                AppendLog("Installer: WARNING - neither uv nor Python was found.");
+                AppendLog("Installer: Python 3.13 will be installed automatically via uv.");
         }
 
         private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
@@ -57,8 +60,14 @@ namespace ArchSmarterFamFab.UI
 
             try
             {
+                Func<string, bool> prompt = message =>
+                {
+                    return Dispatcher.Invoke(() =>
+                        System.Windows.MessageBox.Show(this, message, "FamFab - CUDA Toolkit Required", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes);
+                };
+
                 bool success = await Task.Run(() =>
-                    TripoSRDependencyInstaller.InstallAsync(_environment, progress, _cts.Token),
+                    TripoSRDependencyInstaller.InstallAsync(_environment, progress, _cts.Token, prompt),
                     _cts.Token);
 
                 if (success)
@@ -102,6 +111,19 @@ namespace ArchSmarterFamFab.UI
         private void BtnContinue_Click(object sender, RoutedEventArgs e)
         {
             DialogResult = true;
+        }
+
+        private void BtnCopyLog_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                System.Windows.Clipboard.SetText(LogText.Text);
+                AppendLog("Log copied to clipboard.");
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"Could not copy log: {ex.Message}");
+            }
         }
 
         private void AppendLog(string line)

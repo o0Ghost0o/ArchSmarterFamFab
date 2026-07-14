@@ -100,7 +100,7 @@
 
                 <TextBlock Grid.Row="1"
                            x:Name="SubHeaderLabel"
-                           Text="FamFab can download and install the required Python packages automatically. This may take several minutes."
+                           Text="FamFab can download and install the required Python packages automatically. If needed, it will also install the uv package manager and Python 3.13. This may take several minutes."
                            FontSize="12"
                            Foreground="{StaticResource TextSecondaryBrush}"
                            TextWrapping="Wrap"
@@ -126,6 +126,8 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="8"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="8"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
@@ -138,7 +140,20 @@
                                   BorderThickness="0"
                                   Visibility="Collapsed"/>
 
-                    <Border Grid.Row="2"
+                    <Button Grid.Row="2"
+                             x:Name="BtnCopyLog"
+                             Content="Copy log"
+                             HorizontalAlignment="Right"
+                             Click="BtnCopyLog_Click"
+                             FontSize="11"
+                             Padding="8,2"
+                             Background="Transparent"
+                             Foreground="{StaticResource TextSecondaryBrush}"
+                             BorderBrush="{StaticResource FamFabBorderBrush}"
+                             BorderThickness="1"
+                             Cursor="Hand"/>
+
+                    <Border Grid.Row="4"
                             Background="{StaticResource SurfaceBrush}"
                             BorderBrush="{StaticResource FamFabBorderBrush}"
                             BorderThickness="1"

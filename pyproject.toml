@@ -2,11 +2,11 @@
 name = "famfab-triposr"
 version = "0.1.0"
 description = "TripoSR integration for ArchSmarter FamFab"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.13,<3.14"
 
 dependencies = [
-    "torch>=2.0.0",
-    "numpy>=2.0.0",
+    "torch>=2.6.0",
+    "numpy>=2.1.0",
     "pillow>=11.0.0",
     "xatlas>=0.0.11",
     "rembg[cpu]>=2.0.50",
@@ -19,12 +19,25 @@ dependencies = [
     "omegaconf>=2.3.0",
     "moderngl>=5.10.0",
     "gradio>=5.0.0",
-    "torchmcubes @ git+https://github.com/tatsy/torchmcubes.git",
+    # torchmcubes is installed separately by TripoSRDependencyInstaller because
+    # the upstream source requires local patches (C++20 standard + Ninja generator)
+    # to build reliably on Windows against current PyTorch wheels.
 ]
 
 [tool.uv]
-# Target CUDA 12.6 (forward-compatible with CUDA 13.x drivers).
-# If the target machine has an older driver, switch to:
-#   https://download.pytorch.org/whl/cu124  (CUDA 12.4)
-#   https://download.pytorch.org/whl/cu118  (CUDA 11.8)
-index-url = "https://download.pytorch.org/whl/cu126"
+# PyPI is the default index. The PyTorch CUDA 12.6 index is added below as an
+# extra index, and torch is pinned to it so uv installs the CUDA wheel instead
+# of the CPU-only wheel from PyPI.
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+
+[tool.setuptools]
+# The add-in is not a Python package; it only declares dependencies.
+# Tell setuptools not to auto-discover triposr/ or runtimes/ as packages,
+# which would break the editable install with a flat-layout error.
+packages = []
